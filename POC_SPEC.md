@@ -137,3 +137,93 @@ poc/
 - 유용 판정 → SPEC.md 기반 MVP 착수 (승인 흐름, Hermes, 저장소, 안전장치)
 - 미흡 판정 → 부족한 지점(데이터? 분석 품질? 보고서 형식?)을 SPEC.md에 반영 후 재시도
 - PoC 코드는 MVP에 그대로 승격하지 않는다. `naver.py`, `collect.py`의 로직만 이식 후보다.
+
+## 12. MVP 데이터 레이어 재설계 (2026-07-20, PoC 실측 기반)
+
+> PoC report의 "근거 없음" 셀 폭증 원인을 실측 진단해 확정한 설계.
+> **원인:** PoC `collect.py`는 브랜드 홈페이지 1페이지의 앞 3,000자 markdown만 수집 →
+> 컬러·가격·소재·실루엣은 상품 상세페이지에 있어 랜딩엔 부재. 분석 품질 아닌 **크롤 깊이 문제.**
+> 이 §12는 SPEC.md §5(Crawl4AI, Web Discovery, NAVER)·§6(Content Collector, DataLab Client,
+> Analysis Skills)를 **구체화·대체**한다. 아래 결정은 owner와 합의·확정(LOCK)됨.
+
+### 12.1 소스 획득 사다리 (브랜드별 코드 0, 순서대로 시도·첫 성공 채택)
+
+1. **플랫폼 피드** — Shopify `/products.json` (WooCommerce `/wp-json` 등). **페이지네이션 필수**
+   (250/page 상한, 빈 페이지까지 `?page=N` 루프. 미이행 시 조용히 잘림 — arch4 실측 500+).
+   공개(published) 상품 전량. 재고 수량·metafield 제외.
+2. **sitemap.xml** — 상품 URL 수집 (index→gzip→하위 sitemap 처리 포함, 예 Iris/Shopware).
+3. **페이지 구조화** — 상세페이지 JSON-LD `schema.org/Product`(범용 표준) 또는
+   `__NEXT_DATA__`/`__NUXT__` 임베드 상태(예 Quince Next.js).
+4. **렌더 크롤 + LLM** — crawl4ai 헤드리스로 JS 렌더/봇차단 시도. 최후 폴백.
+
+- **httpx = ①②③ 처리(싸고 빠름). crawl4ai = ④ 전용**(JS렌더 or 봇차단 뚫기, 보장 아님).
+- **하드 봇차단(예 COS 403)은 포기 + 커버리지/실패 명시.** NAVER·크롤 실패와 동일 원칙.
+- 실측 통화/구조: Shopify 6몰(guestinresidence·lisayang=USD, extreme=EUR, &daughter·arch4·cashmereinlove=GBP). 비Shopify: Quince(Next.js), Iris(Shopware sitemap), LE17(sitemap 없음), COS(봇차단).
+
+### 12.2 필드별 폴백 사다리 (브랜드별 코드 0)
+
+필드 하나당: **① 구조화 시도(코드) → ② 없으면 LLM이 raw 레코드서 추출 → ③ 원본 substring 검증(날조 차단).**
+
+| 필드 | 1차(구조화) | 2차(폴백) | 검증 |
+|---|---|---|---|
+| 가격 | variants.price + `compare_at_price`(세일감지) + shop 통화 | — (**항상 코드만, LLM 금지**) | — |
+| 아이템 | product_type | 제목/태그서 LLM | — |
+| 컬러 | options `color`/`colour`(철자 방어) | 태그/제목서 LLM 색토큰 추출 | **원본 substring 존재 확인** |
+| 소재/신상 | tags·body_html·published_at | — | — |
+
+- lisayang처럼 색이 tags에 노이즈와 섞인 경우 → 폴백 사다리가 자동 흡수, 코드에 브랜드명 0줄.
+
+### 12.3 정규화
+
+- **통화(KEXIM 한국수출입은행 AP01):** 일 1회 **KST 10:00** 잡 → `fx_cache.json`. 파이프라인은 캐시만 읽음.
+  통화 USD/EUR/GBP. `deal_bas_r` 콤마 제거, 전부 per-1. **실패/빈응답(주말·공휴일·미고시) → 직전 영업일 값** + report 주석.
+  (KEXIM 첫 고시 ~11시라 10시 호출은 직전일 값 자주 사용 — 의도된 동작.) authkey = **오너 발급 액션.**
+  집계 밴드경계(p25/50/75)만 환산, native+KRW 병기.
+- **컬러(고정 8계열):** 뉴트럴 / 베이지·카멜·브라운 / 블루·네이비 / 그린 / 레드·핑크 / 옐로·오렌지 / 퍼플 / 멀티·패턴.
+  매핑 = **LLM 증분 분류**(처음 보는 컬러명만 LLM에 → `color_map.json` 캐시 병합, 기존 재사용) + **사람 수동 교정 가능**.
+  계열은 닫힌 집합 강제(LLM이 새 계열 생성 금지). 원색명 빈도는 코드가 병행 집계.
+  근거: 6몰 실측 컬러명 파편화 — distinct 다수가 단일 브랜드 전용, 겹치는 건 기본색뿐 → raw로 크로스브랜드 비교 불가.
+
+### 12.4 집계 스키마 (코드가 100% 확정, LLM은 해석만 → evidence 날조 불가)
+
+**브랜드 블록(~11줄):** source · coverage{products, color_missing, failures} · currency(fx날짜) ·
+items(product_type 분포) · colors_fam(8계열) · colors_raw(top10 참고) ·
+price_krw{p25/p50/p75/min/max} · price_band · sale(비율) · materials(키워드) · newness(최근8주 신상수, 최근드롭일).
+
+**크로스브랜드 롤업:** category · covered(N/총) + 실패·제외 · item core · palette · pricing(구간별 분포) · newness · gaps.
+
+- **가격 밴드:** 저가 <20만 / 타깃 20~70만 / 프리미엄 >70만.
+- **신상 창 = 최근 8주** (분석창과 일치, published_at 기준).
+- **결측을 데이터로:** coverage/failures/gaps 필드가 "없음"을 명시 → LLM 빈칸 날조 방지.
+
+### 12.5 NAVER 축 (수요 신호 — 정량 + 정성)
+
+**12.5.1 401 해결 (2026-07-20 실측):** 근본원인은 키 무효 아니라 **`.env` 변수명 오류**.
+오너가 값을 HTTP 헤더명(`X-NCP-APIGW-API-KEY-ID`)으로 넣었는데 코드는 env 변수명
+(`NCP_API_HUB_CLIENT_ID`)을 읽음. 변수명 rename 후 **3콜 전부 200. 키 처음부터 유효**
+(NCP API HUB 키). `SHOPPING_CAT_ID="50000804"`도 live 검증됨("여성 니트/스웨터").
+초기 "키 무효" 진단은 오답이었음.
+
+**12.5.2 정량 소스 3콜 (연령코드 체계 실측 확정):**
+- **Search Trend** `ages=["4","5","6"]` = **25-39 정확** (검색량 기반, 카테고리 무관).
+  캐시미어 니치 수요는 **이 축이 유일하게 신뢰**. 8포인트 시계열 정상.
+- **shopping/categories** `ages=["20","30"]` = 20-39 (Shopping Insight는 10년버킷만,
+  25-39 표현 불가 — coverage_mismatch 주석). 카테고리 클릭 추이. 정상.
+- **shopping/category/keywords → gender/ages 제거(LOCK, 2026-07-20 A).**
+  실측: f+20/30 필터 시 캐시미어 세부어(캐시미어니트·가디건·스웨터·코트) 전부 `data:[]`.
+  필터 제거해도 세부어는 0(카테고리 내 클릭량 집계임계 미달), 광범위어(여성니트)만 4포인트.
+  → **필터 제거로 광범위어라도 확보**, 캐시미어 세부 수요는 Search Trend에 의존.
+
+**12.5.3 정성 소스 — Blog Search (신규, 2026-07-20 LOCK):**
+- **`GET /search/v1/blog`** (base `https://naverapihub.apigw.ntruss.com`, **같은 NCP 키**).
+  live 검증: status 200, total 7만+, `sort=date` 최신순, items{title, description, postdate,
+  bloggername, link}. 오너가 NCP 콘솔서 같은 앱에 블로그검색 구독 추가함(새 키 불요).
+- 용도: **한국 소비자 정성 목소리**(컬러조합·간절기 코디·브랜드 언급) → report가 깐
+  "한국 타깃 정합 불가"·"컬러조합 근거 전무" 갭 메움. Tavily 네이버블로그 우연수집을 체계화.
+- 정량(정성 아님) 축과 분리: DataLab=수요 크기, Blog=수요 내용.
+
+**12.5.4 evidence-id 정책:** NAVER 정량 signals는 상대값이라 주장 근거 인용 불가 →
+report §2 별도 블록 유지(현행). **Blog 결과는 URL·발췌 있으니 evidence(E###) 부여 대상**
+(웹크롤 evidence와 동일 취급, Design Map/트렌드 인용 가능). 정량 signals와 정성 evidence 구분.
+
+- 코드(`poc/naver.py`)는 실패를 report §7에 기록하고 계속 진행 — 실패 폴백 원칙 유지.

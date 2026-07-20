@@ -52,9 +52,8 @@ SEARCH_KEYWORD_GROUPS = [
 # Shopping Insight 키워드별: 최대 5개 그룹, 그룹당 검색어 1개
 SHOPPING_KEYWORDS = ["캐시미어니트", "캐시미어가디건", "캐시미어스웨터", "여성니트", "캐시미어코트"]
 
-# 네이버쇼핑 cat_id: 패션의류 > 여성의류 > 니트/스웨터 로 추정.
-# 첫 live 실행 전 검증: search.shopping.naver.com 에서 해당 카테고리 페이지 URL의 catId 확인.
-# 틀리면 NAVER가 400/빈 결과 반환 → naver.py가 failures에 기록하고 계속 진행함.
+# 네이버쇼핑 cat_id: 패션의류 > 여성의류 > 니트/스웨터.
+# 2026-07-20 live 검증됨: shopping_category 200 + title "여성 니트/스웨터" 반환 확인.
 SHOPPING_CAT_ID = "50000804"
 SHOPPING_CAT_NAME = "여성 니트/스웨터"
 
