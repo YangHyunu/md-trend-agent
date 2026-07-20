@@ -25,6 +25,20 @@ def _fmt_counts(pairs: list) -> str:
     return ", ".join(f"{_cell(str(n))}({c})" for n, c in pairs) if pairs else "근거 없음"
 
 
+def _dl_cells(agg: dict) -> tuple[str, str, str]:
+    """datalayer 집계 → Design Map (컬러, 소재, 가격대) 셀. 코드 실측값으로 §3 채움."""
+    colors = _fmt_counts(agg.get("colors_top", [])[:5])
+    materials = _fmt_counts(agg.get("materials_top", [])[:4])
+    p = agg.get("price")
+    if p:
+        cur = agg.get("currency") or "?"
+        price = (f"{cur} p25 {p['p25']:.0f}/p50 {p['p50']:.0f}/p75 {p['p75']:.0f} "
+                 f"(세일 {round(agg['sale_ratio'] * 100)}%)")
+    else:
+        price = "근거 없음"
+    return colors, materials, price
+
+
 def _datalayer_section(aggregates: list[dict]) -> list[str]:
     """§3-b: datalayer 코드계산 브랜드 블록 (POC_SPEC §12.4). LLM 아닌 실측."""
     L = ["## 3-b. 상품 실측 데이터 (datalayer, Shopify 직수집)\n",
@@ -89,11 +103,22 @@ def render_report(analysis: AnalysisOutput, naver: dict,
     L.append("")
 
     L.append("## 3. Design Map\n")
+    L.append("> 컬러·소재·가격대는 Shopify 몰의 경우 **datalayer 실측**(코드 집계)으로 채움. "
+             "비Shopify 몰은 웹 크롤 근거(E###)만 — 소스 미구현 갭.")
     L.append("| 브랜드 | 핵심 아이템 | 컬러 | 소재 | 실루엣 | 디테일 | 가격대 | 근거 |")
     L.append("|---|---|---|---|---|---|---|---|")
+    dl_by_brand = {a["brand"].strip().lower(): a
+                   for a in (datalayer_aggregates or []) if a.get("count")}
     for r in analysis.design_map:
-        L.append(f"| {_cell(r.brand)} | {_cell(r.key_items)} | {_cell(r.colors)} | {_cell(r.materials)} | "
-                 f"{_cell(r.silhouettes)} | {_cell(r.details)} | {_cell(r.price_range)} | {_ids(r.evidence_ids)} |")
+        agg = dl_by_brand.get(r.brand.strip().lower())
+        if agg:  # Shopify 실측으로 컬러/소재/가격 override (§12.4: 코드가 수치 확정)
+            colors, materials, price = _dl_cells(agg)
+            ev = "datalayer 실측"
+        else:
+            colors, materials, price = r.colors, r.materials, r.price_range
+            ev = _ids(r.evidence_ids)
+        L.append(f"| {_cell(r.brand)} | {_cell(r.key_items)} | {_cell(colors)} | {_cell(materials)} | "
+                 f"{_cell(r.silhouettes)} | {_cell(r.details)} | {_cell(price)} | {ev} |")
     L.append("")
 
     if datalayer_aggregates:
@@ -147,7 +172,10 @@ def _offline_check() -> None:
                 Trend(name="근거약한트렌드", phase="둔화", rationale="r2", evidence_ids=[])],
         design_map=[DesignMapRow(brand="Quince", key_items="아이템A|아이템B", colors="근거 없음",
                                  materials="캐시미어100", silhouettes="클래식", details="근거 없음",
-                                 price_range="$49.90", evidence_ids=["E002"])],
+                                 price_range="$49.90", evidence_ids=["E002"]),
+                    DesignMapRow(brand="Arch4", key_items="Sweaters", colors="근거 없음",
+                                 materials="근거 없음", silhouettes="근거 없음", details="d",
+                                 price_range="근거 없음", evidence_ids=["E005"])],
         gaps=["컬러블록 부재"],
         actions=[Action(recommendation="a", rationale="b", evidence_ids=["E001"])],
         limitations=["표본 작음 — 추가 조사 필요"])
@@ -173,6 +201,11 @@ def _offline_check() -> None:
     assert "Camel(2)" in md, "컬러 top 렌더 실패"
     assert "Quince: 지원 소스 없음" in md, "미수집 브랜드 기록 실패"
     assert render_report(analysis, naver, crawl, ev).find("## 3-b") == -1, "aggregates 없으면 섹션 미출력이어야"
+    arch_row = [l for l in md.splitlines() if l.startswith("| Arch4")][0]
+    assert "Camel(2)" in arch_row and "datalayer 실측" in arch_row, "§3 datalayer override 실패"
+    assert "GBP p25 150" in arch_row, "§3 가격 override 실패"
+    quince_row = [l for l in md.splitlines() if l.startswith("| Quince")][0]
+    assert "$49.90" in quince_row, "비Shopify override 없이 LLM 값 유지 실패"
     assert "상대값" in md, "ratio 주의문 누락"
     assert "20~39세" in md, "coverage_mismatch 주의문 누락"
     assert "근거 없음" in md
