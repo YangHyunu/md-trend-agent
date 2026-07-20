@@ -67,9 +67,14 @@ CALLS = [
 
 
 def fetch_all() -> dict:
+    client_id = os.environ.get("NCP_API_HUB_CLIENT_ID")
+    client_secret = os.environ.get("NCP_API_HUB_CLIENT_SECRET")
+    if not client_id or not client_secret:
+        return {"raw": {}, "signals": [], "failures": [{"call": "all", "error": "NCP_API_HUB_CLIENT_ID/SECRET 환경변수 없음"}]}
+
     headers = {
-        "X-NCP-APIGW-API-KEY-ID": os.environ["NCP_API_HUB_CLIENT_ID"],
-        "X-NCP-APIGW-API-KEY": os.environ["NCP_API_HUB_CLIENT_SECRET"],
+        "X-NCP-APIGW-API-KEY-ID": client_id,
+        "X-NCP-APIGW-API-KEY": client_secret,
         "Content-Type": "application/json",
     }
     start, end = config.period()
