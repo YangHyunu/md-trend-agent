@@ -114,9 +114,9 @@ and defer overlapping spec docs rather than spawning new ones.
 > actually created. This is pre-provisioning only.
 
 1. **MEMORY.md has a single writer — only the main session writes it.**
-   - **Main checkout session** (`/Users/yanghyeon-u/Desktop/Claude-BZRR-SUB`): **may write**
+   - **Main checkout session** (`/Users/yanghyeon-u/Desktop/md-trend-agent`): **may write**
      to the global auto-memory
-     (`~/.claude/projects/-Users-yanghyeon-u-Desktop-Claude-BZRR-SUB/memory/`).
+     (`~/.claude/projects/-Users-yanghyeon-u-Desktop-md-trend-agent/memory/`).
      No approval wait needed.
    - **Worktree sessions** (multiple may exist at once, per branch or purpose):
      **read-only.** No edits, additions, or deletions. Only for genuinely major

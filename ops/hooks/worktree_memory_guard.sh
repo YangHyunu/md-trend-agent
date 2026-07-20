@@ -12,7 +12,7 @@
 # (project-local, gitignored — see .gitignore)
 set -uo pipefail
 
-MAIN_REPO="/Users/yanghyeon-u/Desktop/Claude-BZRR-SUB"
+MAIN_REPO="/Users/yanghyeon-u/Desktop/md-trend-agent"
 
 # The hook must fail silently — it fires on every session start, so any noise
 # here is seen by every session.

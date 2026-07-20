@@ -13,3 +13,8 @@ venv/
 .DS_Store
 
 out/
+
+# build / tooling scratch
+*.egg-info/
+.omc/
+.superpowers/
