@@ -26,7 +26,7 @@ def discover_urls() -> list[dict]:
         try:
             resp = client.search(q, max_results=5)
         except Exception as e:
-            print(f" tavily FAIL {q!r}: {e}", file=sys.stderr)
+            print(f" tavily FAIL {q!r}: {type(e).__name__}", file=sys.stderr)
             continue
         for r in resp.get("results", []):
             u = r.get("url", "")
@@ -50,6 +50,18 @@ def _brand_for(url: str) -> str | None:
     return None
 
 
+def _is_banned(url: str) -> bool:
+    """Check if URL belongs to a brand with auto_collect=False."""
+    host = urlparse(url).netloc.lower()
+    for b in config.BRANDS:
+        if b.auto_collect:
+            continue
+        banned_host = urlparse(b.url).netloc.lower()
+        if banned_host and (banned_host in host or host in banned_host):
+            return True
+    return False
+
+
 def select_urls(discovered: list[dict]) -> list[str]:
     """공식몰 우선 + 발견 URL, 총 MAX_CRAWL_URLS, 도메인당 MAX_PER_DOMAIN."""
     urls: list[str] = [b.url for b in config.BRANDS if b.auto_collect]
@@ -61,6 +73,8 @@ def select_urls(discovered: list[dict]) -> list[str]:
         if len(urls) >= config.MAX_CRAWL_URLS:
             break
         u = item["url"]
+        if _is_banned(u):
+            continue
         d = urlparse(u).netloc.lower()
         if per_domain.get(d, 0) >= config.MAX_PER_DOMAIN:
             continue
@@ -133,6 +147,10 @@ def _offline_check() -> None:
             {"url": "https://a.com", "ok": False, "text": "", "error": "e", "fetched_at": "t"}]
     ev = build_evidence(fake)
     assert len(ev) == 1 and ev[0]["id"] == "E001" and ev[0]["source_type"] == "official"
+    assert _is_banned("https://www.instagram.com/plushmere/reel/x")
+    assert not _is_banned("https://www.quince.com/women")
+    banned_sel = select_urls([{"url": "https://www.instagram.com/plushmere/p/1", "found_via": "q"}])
+    assert all("instagram.com" not in u for u in banned_sel)
     print("collect offline checks OK")
 
 
