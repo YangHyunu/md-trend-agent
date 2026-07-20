@@ -1,0 +1,15 @@
+.env
+.claude/settings.json
+
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+*.db
+*.sqlite
+*.sqlite3
+
+.DS_Store
+
+out/
