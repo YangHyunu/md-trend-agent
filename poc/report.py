@@ -46,7 +46,7 @@ def render_report(analysis: AnalysisOutput, naver: dict,
                  f"최근 {latest['period']} ratio {latest['ratio']}, "
                  f"기간 내 최고 {peak['period']} ratio {peak['ratio']}")
     if not signals:
-        L.append("- NAVER 신호 없음 (수집 실패 — 11절 참고)")
+        L.append("- NAVER 신호 없음 (수집 실패 — 7절 참고)")
     L.append("")
 
     L.append("## 3. Design Map\n")
@@ -101,7 +101,8 @@ def render_report(analysis: AnalysisOutput, naver: dict,
 def _offline_check() -> None:
     from poc.analyze import Action, AnalysisOutput, DesignMapRow, Trend
     analysis = AnalysisOutput(
-        trends=[Trend(name="브러시드 캐시미어", phase="상승", rationale="r", evidence_ids=["E001"])],
+        trends=[Trend(name="브러시드 캐시미어", phase="상승", rationale="r", evidence_ids=["E001"]),
+                Trend(name="근거약한트렌드", phase="둔화", rationale="r2", evidence_ids=[])],
         design_map=[DesignMapRow(brand="Quince", key_items="크루넥", colors="근거 없음",
                                  materials="캐시미어100", silhouettes="클래식", details="근거 없음",
                                  price_range="$49.90", evidence_ids=["E002"])],
@@ -123,6 +124,8 @@ def _offline_check() -> None:
     assert "PLUSH'MERE" in md
     assert "https://x.com" in md and "timeout" in md, "실패 URL 누락"
     assert "| E001 |" in md, "출처 테이블 누락"
+    assert "search_trend" in md and "401" in md, "NAVER 실패 표시 누락"
+    assert "근거약한트렌드" in md and "근거 없음" in md.split("근거약한트렌드")[1][:80], "_ids 빈 리스트 폴백 미동작"
     print("report offline checks OK")
 
 
