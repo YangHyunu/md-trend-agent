@@ -62,3 +62,40 @@ def test_extract_item_llm_fallback_when_product_type_blank():
 def test_extract_item_llm_unknown_maps_to_none():
     out = fields.extract_item("", "Mystery", [], llm_fn=lambda p: "unknown")
     assert out is None
+
+
+def test_pick_structured_colors_handles_both_spellings():
+    us = [{"name": "Color", "values": ["Camel", "Grey"]}]
+    uk = [{"name": "Colour", "values": ["Navy"]}]
+    assert fields.pick_structured_colors(us) == ["Camel", "Grey"]
+    assert fields.pick_structured_colors(uk) == ["Navy"]
+
+
+def test_pick_structured_colors_empty_when_no_color_option():
+    assert fields.pick_structured_colors([{"name": "Size", "values": ["S"]}]) == []
+
+
+def test_verify_substring_case_insensitive():
+    assert fields.verify_substring("Camel", "soft CAMEL wool") is True
+    assert fields.verify_substring("Emerald", "soft camel wool") is False
+    assert fields.verify_substring("", "anything") is False
+
+
+def test_extract_colors_prefers_structured_no_llm_call():
+    called = []
+    opts = [{"name": "color", "values": ["Ivory"]}]
+    out = fields.extract_colors(opts, "t", [], "raw", llm_fn=lambda p: called.append(p) or "X")
+    assert out == ["Ivory"]
+    assert called == []  # 구조화 성공 시 LLM 미호출
+
+
+def test_extract_colors_llm_fallback_keeps_only_verified():
+    # LLM이 Camel(원본 존재)·Emerald(원본 없음) 반환 → Camel만 채택
+    raw = "Beautiful camel knit cardigan"
+    out = fields.extract_colors(
+        [], "Camel Cardigan", ["knit"], raw, llm_fn=lambda p: "Camel, Emerald")
+    assert out == ["Camel"]
+
+
+def test_extract_colors_no_structured_no_llm_returns_empty():
+    assert fields.extract_colors([], "t", [], "raw", llm_fn=None) == []

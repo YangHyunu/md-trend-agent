@@ -48,3 +48,38 @@ def extract_item(product_type: str | None, title: str, tags: list[str],
     )
     out = (llm_fn(prompt) or "").strip()
     return None if not out or out.lower() == "unknown" else out
+
+
+def pick_structured_colors(options: list[dict]) -> list[str]:
+    """options 중 name이 color/colour(철자 방어)인 것의 values."""
+    for o in options:
+        if str(o.get("name", "")).strip().lower() in ("color", "colour"):
+            return [str(v).strip() for v in o.get("values", []) if str(v).strip()]
+    return []
+
+
+def verify_substring(token: str, raw_blob: str) -> bool:
+    """LLM 추출 색이 원본에 실제 존재하는지 (날조 차단, §12.2)."""
+    return bool(token) and token.lower() in raw_blob.lower()
+
+
+def llm_color_fallback(title: str, tags: list[str], raw_blob: str,
+                       llm_fn: LLMFn) -> list[str]:
+    prompt = (
+        "다음 상품 텍스트에서 색상명만 쉼표로 나열하라. 색이 없으면 빈 줄.\n"
+        f"제목: {title}\n태그: {', '.join(tags)}"
+    )
+    out = llm_fn(prompt) or ""
+    cands = [c.strip() for c in out.split(",") if c.strip()]
+    return [c for c in cands if verify_substring(c, raw_blob)]
+
+
+def extract_colors(options: list[dict], title: str, tags: list[str],
+                   raw_blob: str, llm_fn: LLMFn | None = None) -> list[str]:
+    """① 구조화 options → ② LLM 추출 + substring 검증 (§12.2)."""
+    structured = pick_structured_colors(options)
+    if structured:
+        return structured
+    if llm_fn is None:
+        return []
+    return llm_color_fallback(title, tags, raw_blob, llm_fn)
