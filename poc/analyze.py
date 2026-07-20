@@ -90,6 +90,34 @@ def _payload(evidence: list[dict], signals: list[dict]) -> str:
     }, ensure_ascii=False)
 
 
+def _sanitize(analysis: AnalysisOutput, evidence: list[dict]) -> AnalysisOutput:
+    """LLM 출력 후처리: 날조된 evidence id 제거, Design Map 11개 브랜드 행 보장."""
+    valid_ids = {e["id"] for e in evidence}
+
+    def keep(ids: list[str]) -> list[str]:
+        return [i for i in ids if i in valid_ids]
+
+    for t in analysis.trends:
+        t.evidence_ids = keep(t.evidence_ids)
+    for a in analysis.actions:
+        a.evidence_ids = keep(a.evidence_ids)
+    for r in analysis.design_map:
+        r.evidence_ids = keep(r.evidence_ids)
+
+    expected = [b.name for b in config.BRANDS if b.auto_collect]
+    have = {r.brand for r in analysis.design_map}
+    analysis.design_map = [r for r in analysis.design_map if r.brand in set(expected)]
+    for name in expected:
+        if name not in have:
+            analysis.design_map.append(DesignMapRow(
+                brand=name, key_items="근거 없음", colors="근거 없음", materials="근거 없음",
+                silhouettes="근거 없음", details="근거 없음", price_range="근거 없음",
+                evidence_ids=[]))
+    order = {n: i for i, n in enumerate(expected)}
+    analysis.design_map.sort(key=lambda r: order.get(r.brand, 99))
+    return analysis
+
+
 def run_researcher(evidence: list[dict], signals: list[dict]) -> ResearcherOutput:
     system = (
         "너는 패션 리서처다. 수집된 웹 발췌와 NAVER 수요 신호에서 사실만 정리한다. "
@@ -112,7 +140,7 @@ def run_analyst(researcher: ResearcherOutput, evidence: list[dict],
     )
     user = json.dumps({"researcher_facts": researcher.model_dump()}, ensure_ascii=False) \
         + "\n\n" + _payload(evidence, signals)
-    return _call(system, user, AnalysisOutput)
+    return _sanitize(_call(system, user, AnalysisOutput), evidence)
 
 
 if __name__ == "__main__":
