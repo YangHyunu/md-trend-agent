@@ -1,6 +1,4 @@
 """가짜 Shopify 몰 MockTransport. /products.json 페이지네이션 + /meta.json."""
-import json
-
 import httpx
 
 _PRODUCTS = [

@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "bzrr"
 version = "0.1.0"
 description = "BZRR data collection and analysis pipeline"
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 
 [tool.setuptools.packages.find]
 where = ["."]
