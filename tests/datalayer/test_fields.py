@@ -27,3 +27,38 @@ def test_extract_price_none_compare_is_not_sale():
     price, compare, on_sale = fields.extract_price(
         {"price": "650.00", "compare_at_price": None})
     assert (price, compare, on_sale) == (650.0, None, False)
+
+
+def test_extract_materials_scans_all_texts_case_insensitive():
+    mats = fields.extract_materials("100% Cashmere Sweater", "wool, silk", "")
+    assert set(mats) == {"cashmere", "wool", "silk"}
+
+
+def test_extract_materials_empty_when_no_keyword():
+    assert fields.extract_materials("plain top", "") == []
+
+
+def test_extract_item_prefers_product_type():
+    assert fields.extract_item("Sweater", "Cozy Knit", ["knit"]) == "Sweater"
+
+
+def test_extract_item_none_when_empty_and_no_llm():
+    assert fields.extract_item("", "Cozy Knit", ["knit"], llm_fn=None) is None
+    assert fields.extract_item(None, "Cozy Knit", ["knit"]) is None
+
+
+def test_extract_item_llm_fallback_when_product_type_blank():
+    calls = []
+
+    def fake_llm(prompt: str) -> str:
+        calls.append(prompt)
+        return "Cardigan"
+
+    out = fields.extract_item("", "Wool Button Front", ["outerwear"], llm_fn=fake_llm)
+    assert out == "Cardigan"
+    assert len(calls) == 1
+
+
+def test_extract_item_llm_unknown_maps_to_none():
+    out = fields.extract_item("", "Mystery", [], llm_fn=lambda p: "unknown")
+    assert out is None

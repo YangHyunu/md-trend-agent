@@ -19,3 +19,32 @@ def extract_price(variant: dict) -> tuple[float | None, float | None, bool]:
     compare = to_float(variant.get("compare_at_price"))
     on_sale = compare is not None and price is not None and compare > price
     return price, compare, on_sale
+
+
+MATERIAL_KEYWORDS = [
+    "cashmere", "wool", "lambswool", "merino", "mohair", "alpaca",
+    "cotton", "silk", "linen", "cashair", "polyester", "nylon",
+    "viscose", "leather", "angora",
+]
+
+
+def extract_materials(*texts: str) -> list[str]:
+    """tags·title·body_html 등에서 소재 키워드 스캔 (§12.2)."""
+    blob = " ".join(t for t in texts if t).lower()
+    return [m for m in MATERIAL_KEYWORDS if m in blob]
+
+
+def extract_item(product_type: str | None, title: str, tags: list[str],
+                 llm_fn: LLMFn | None = None) -> str | None:
+    """① product_type → ② 비면 LLM(title/tags) 폴백 (§12.2)."""
+    if product_type and product_type.strip():
+        return product_type.strip()
+    if llm_fn is None:
+        return None
+    prompt = (
+        "다음 상품의 아이템 유형을 한 단어~짧은 구로만 답하라 "
+        "(예: Sweater, Cardigan, Dress). 모르면 'unknown'.\n"
+        f"제목: {title}\n태그: {', '.join(tags)}"
+    )
+    out = (llm_fn(prompt) or "").strip()
+    return None if not out or out.lower() == "unknown" else out
