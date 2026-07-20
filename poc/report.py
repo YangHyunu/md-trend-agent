@@ -20,8 +20,42 @@ def _cell(s: str) -> str:
     return s.replace("|", "\\|")
 
 
+def _fmt_counts(pairs: list) -> str:
+    """[(name, count), ...] → 'name(count), ...'. 빈 리스트는 '근거 없음'."""
+    return ", ".join(f"{_cell(str(n))}({c})" for n, c in pairs) if pairs else "근거 없음"
+
+
+def _datalayer_section(aggregates: list[dict]) -> list[str]:
+    """§3-b: datalayer 코드계산 브랜드 블록 (POC_SPEC §12.4). LLM 아닌 실측."""
+    L = ["## 3-b. 상품 실측 데이터 (datalayer, Shopify 직수집)\n",
+         "> 가격은 **native 통화**(KRW 환산 = 통화 정규화 이후). 컬러는 **원색명**(8계열 매핑 이후).",
+         "> 코드가 직접 집계 — LLM 해석 아님. 비Shopify 몰은 소스 미구현으로 실패 기록.\n"]
+    ok = [a for a in aggregates if a.get("count")]
+    failed = [a for a in aggregates if not a.get("count")]
+    for a in ok:
+        cur = a.get("currency") or "?"
+        p = a.get("price")
+        L.append(f"### {a['brand']} — {a['source']}, {a['count']}개 상품")
+        if p:
+            L.append(f"- 가격({cur}): p25 {p['p25']} / p50 {p['p50']} / p75 {p['p75']} "
+                     f"(최저 {p['min']}–최고 {p['max']}, n={p['n']}), 세일 {round(a['sale_ratio']*100)}%")
+        L.append(f"- 컬러 top: {_fmt_counts(a['colors_top'])}")
+        L.append(f"- 아이템: {_fmt_counts(a['items_top'])}")
+        L.append(f"- 소재: {_fmt_counts(a['materials_top'])}")
+        nw = a["newness"]
+        L.append(f"- 신상(최근 {nw['weeks']}주): {nw['recent_count']}개, 최신 {nw['latest'] or '없음'}")
+        L.append("")
+    if failed:
+        L.append("**미수집(소스 사다리 rung2-4 미구현 — 정직한 갭):**")
+        for a in failed:
+            L.append(f"- {a['brand']}: {a.get('failure') or '수집 0건'}")
+        L.append("")
+    return L
+
+
 def render_report(analysis: AnalysisOutput, naver: dict,
-                  crawl_results: list[dict], evidence: list[dict]) -> str:
+                  crawl_results: list[dict], evidence: list[dict],
+                  datalayer_aggregates: list[dict] | None = None) -> str:
     L: list[str] = []
     a = config.ANALYSIS
     L.append(f"# 캐시미어·니트웨어 트렌드 보고서 (PoC)\n")
@@ -61,6 +95,9 @@ def render_report(analysis: AnalysisOutput, naver: dict,
         L.append(f"| {_cell(r.brand)} | {_cell(r.key_items)} | {_cell(r.colors)} | {_cell(r.materials)} | "
                  f"{_cell(r.silhouettes)} | {_cell(r.details)} | {_cell(r.price_range)} | {_ids(r.evidence_ids)} |")
     L.append("")
+
+    if datalayer_aggregates:
+        L.extend(_datalayer_section(datalayer_aggregates))
 
     L.append("## 4. 트렌드\n")
     for phase in ("상승", "주류", "포화", "둔화"):
@@ -122,7 +159,20 @@ def _offline_check() -> None:
     crawl = [{"url": "https://x.com", "ok": False, "text": "", "error": "timeout", "fetched_at": "t"}]
     ev = [{"id": "E001", "url": "https://extreme-cashmere.com/", "brand": "Extreme cashmere",
            "source_type": "official", "fetched_at": "2026-07-20T00:00:00"}]
-    md = render_report(analysis, naver, crawl, ev)
+    dl = [{"brand": "Arch4", "source": "shopify", "count": 2, "failure": None,
+           "currency": "GBP", "price": {"min": 130.0, "max": 240.0, "p25": 150.0,
+                                        "p50": 185.0, "p75": 220.0, "n": 2},
+           "sale_ratio": 0.5, "colors_top": [("Camel", 2)], "items_top": [("Sweater", 2)],
+           "materials_top": [("cashmere", 2)],
+           "newness": {"weeks": 8, "recent_count": 1, "latest": "2026-07-01"}},
+          {"brand": "Quince", "source": None, "count": 0, "failure": "지원 소스 없음"}]
+    md = render_report(analysis, naver, crawl, ev, datalayer_aggregates=dl)
+    assert "## 3-b" in md and "직수집" in md, "datalayer 섹션 누락"
+    assert "Arch4 — shopify, 2개 상품" in md, "datalayer 성공 브랜드 렌더 실패"
+    assert "가격(GBP): p25 150.0" in md, "가격밴드 렌더 실패"
+    assert "Camel(2)" in md, "컬러 top 렌더 실패"
+    assert "Quince: 지원 소스 없음" in md, "미수집 브랜드 기록 실패"
+    assert render_report(analysis, naver, crawl, ev).find("## 3-b") == -1, "aggregates 없으면 섹션 미출력이어야"
     assert "상대값" in md, "ratio 주의문 누락"
     assert "20~39세" in md, "coverage_mismatch 주의문 누락"
     assert "근거 없음" in md
