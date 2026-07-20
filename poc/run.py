@@ -30,7 +30,7 @@ def main() -> int:
     ok = sum(r["ok"] for r in crawl_results)
     print(f"  crawled ok={ok}/{len(crawl_results)} evidence={len(evidence)}")
     if not evidence and not naver_result["signals"]:
-        print("근거 0건 — 분석 불가. 실패 기록만 보고서에 남기고 종료.", file=sys.stderr)
+        print("근거 0건 — 실패 기록 중심의 보고서로 계속 진행.", file=sys.stderr)
 
     print("[3/4] LLM 분석 (2패스)...")
     researcher = run_researcher(evidence, naver_result["signals"])
