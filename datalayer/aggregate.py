@@ -30,7 +30,7 @@ def brand_aggregate(result: BrandExtractionResult, *, as_of: date | None = None,
     if not prods:
         return agg
 
-    prices = sorted(p.price_native for p in prods if p.price_native is not None)
+    prices = sorted(p.price_native for p in prods if p.price_native is not None and p.price_native > 0)
     currencies = Counter(p.currency for p in prods if p.currency)
     agg["currency"] = currencies.most_common(1)[0][0] if currencies else None
     agg["price"] = {

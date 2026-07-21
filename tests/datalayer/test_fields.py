@@ -38,6 +38,17 @@ def test_extract_materials_empty_when_no_keyword():
     assert fields.extract_materials("plain top", "") == []
 
 
+def test_extract_materials_word_boundary_avoids_substring_false_positives():
+    # lambswool 상품은 wool을 포함하지 않아야 하고, silky 상품은 silk를 포함하지 않아야 함 (MDA-2)
+    mats = fields.extract_materials("100% Lambswool Cardigan", "silky finish", "")
+    assert set(mats) == {"lambswool"}
+
+
+def test_extract_materials_still_matches_standalone_keyword():
+    mats = fields.extract_materials("Wool and Silk Blend", "", "")
+    assert set(mats) == {"wool", "silk"}
+
+
 def test_extract_item_canonicalizes_product_type():
     # 깨끗한 몰: product_type이 아이템 → 닫힌집합 canonical로 정규화
     assert fields.extract_item("Sweater", "Cozy Knit") == "Sweater"

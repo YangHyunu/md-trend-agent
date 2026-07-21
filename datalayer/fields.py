@@ -28,11 +28,13 @@ MATERIAL_KEYWORDS = [
     "viscose", "leather", "angora",
 ]
 
+_MATERIAL_PATTERNS = [(m, re.compile(rf"\b{re.escape(m)}\b")) for m in MATERIAL_KEYWORDS]
+
 
 def extract_materials(*texts: str) -> list[str]:
-    """tags·title·body_html 등에서 소재 키워드 스캔 (§12.2)."""
+    """tags·title·body_html 등에서 소재 키워드 스캔, 단어경계로 부분매치 방지 (§12.2)."""
     blob = " ".join(t for t in texts if t).lower()
-    return [m for m in MATERIAL_KEYWORDS if m in blob]
+    return [m for m, pattern in _MATERIAL_PATTERNS if pattern.search(blob)]
 
 
 # 닫힌 아이템 집합 (canonical ← 동의어 소문자). 색 8계열과 동일 패턴 (MDA-3).
