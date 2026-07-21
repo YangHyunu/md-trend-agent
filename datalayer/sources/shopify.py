@@ -56,7 +56,7 @@ def _map(p: dict, brand: str, currency: str | None, origin: str,
     return ProductRecord(
         brand=brand,
         url=f"{origin}/products/{p.get('handle', '')}",
-        item=fields.extract_item(p.get("product_type"), title, tags, llm_fn),
+        item=fields.extract_item(p.get("product_type"), title),
         colors_raw=fields.extract_colors(options, title, tags, raw_blob, llm_fn),
         price_native=price,
         currency=currency,

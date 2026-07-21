@@ -49,30 +49,42 @@ def test_extract_materials_still_matches_standalone_keyword():
     assert set(mats) == {"wool", "silk"}
 
 
-def test_extract_item_prefers_product_type():
-    assert fields.extract_item("Sweater", "Cozy Knit", ["knit"]) == "Sweater"
+def test_extract_item_canonicalizes_product_type():
+    # 깨끗한 몰: product_type이 아이템 → 닫힌집합 canonical로 정규화
+    assert fields.extract_item("Sweater", "Cozy Knit") == "Sweater"
+    assert fields.extract_item("PULLOVER", "x") == "Sweater"   # 동의어→Sweater
+    assert fields.extract_item("sweaters", "x") == "Sweater"   # 복수형
+    assert fields.extract_item("CARDIGAN", "x") == "Cardigan"  # 대소문자 정규화
 
 
-def test_extract_item_none_when_empty_and_no_llm():
-    assert fields.extract_item("", "Cozy Knit", ["knit"], llm_fn=None) is None
-    assert fields.extract_item(None, "Cozy Knit", ["knit"]) is None
+def test_extract_item_falls_back_to_title_when_product_type_junk():
+    # Lisa Yang: product_type=시즌태그, 아이템은 title에
+    assert fields.extract_item("SS26 - Seasonal", "The Alain Sweater") == "Sweater"
+    assert fields.extract_item("AW26 Drop 1", "The Suzette Cardigan") == "Cardigan"
+    # cashmereinlove: product_type=소재%, 아이템은 title에
+    assert fields.extract_item("70%Wool 30% Cashmere", "Elen Cardigan") == "Cardigan"
+    assert fields.extract_item("100%Cashmere", "Cara Fine Knit Cashmere Tee") == "Top"
 
 
-def test_extract_item_llm_fallback_when_product_type_blank():
-    calls = []
-
-    def fake_llm(prompt: str) -> str:
-        calls.append(prompt)
-        return "Cardigan"
-
-    out = fields.extract_item("", "Wool Button Front", ["outerwear"], llm_fn=fake_llm)
-    assert out == "Cardigan"
-    assert len(calls) == 1
+def test_extract_item_none_when_no_keyword_anywhere():
+    # 시즌/소재/성별 = 비아이템 → None (조용히 통과 X)
+    assert fields.extract_item("SS26 - Seasonal", "Mystery Object") is None
+    assert fields.extract_item("70%Wool 30% Cashmere", "Nameless") is None
+    assert fields.extract_item("MENS", "Just A Gender") is None
+    assert fields.extract_item(None, "") is None
+    assert fields.extract_item("", "") is None
 
 
-def test_extract_item_llm_unknown_maps_to_none():
-    out = fields.extract_item("", "Mystery", [], llm_fn=lambda p: "unknown")
-    assert out is None
+def test_extract_item_word_boundary_avoids_substring_false_match():
+    # 'wool'이 아이템 아님, 'lambswool' 안의 wool로 오매칭 안됨
+    assert fields.extract_item("Lambswool Jumper", "x") == "Sweater"  # jumper만 매칭
+    # 'top'이 다른 단어 내부로 안 걸림
+    assert fields.extract_item("Laptop Bag", "x") == "Accessory"      # bag, top 아님
+
+
+def test_extract_item_longest_keyword_wins_in_multi_item_title():
+    # 'Sari Wrap Knit Skirt': skirt(5) > wrap(4) → Skirt
+    assert fields.extract_item("70% Wool 30% Cashmere", "Sari Wrap Knit Skirt") == "Skirt"
 
 
 def test_pick_structured_colors_handles_both_spellings():
