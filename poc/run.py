@@ -75,7 +75,11 @@ def main() -> int:
     md = report.render_report(analysis, naver_result, crawl_results, evidence,
                               datalayer_aggregates=dl_aggregates, steady=steady)
     (config.OUT_DIR / "report.md").write_text(md, encoding="utf-8")
-    print(f"완료: {config.OUT_DIR / 'report.md'}")
+    from poc.report_html import render_html
+    html_doc = render_html(analysis, naver_result, crawl_results, evidence,
+                           datalayer_aggregates=dl_aggregates, steady=steady)
+    (config.OUT_DIR / "report.html").write_text(html_doc, encoding="utf-8")
+    print(f"완료: {config.OUT_DIR / 'report.md'} + report.html")
     return 0
 
 

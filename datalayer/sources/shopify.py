@@ -74,6 +74,7 @@ def _map(p: dict, brand: str, currency: str | None, origin: str,
         published_at=(p.get("published_at") or "")[:10] or None,
         source="shopify",
         silhouettes=fields.extract_silhouettes(title, tags, body),
+        image_url=((p.get("images") or [{}])[0].get("src") or None),
     )
 
 
