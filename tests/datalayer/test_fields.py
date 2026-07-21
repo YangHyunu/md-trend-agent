@@ -236,3 +236,45 @@ def test_extract_colors_llm_fallback_keeps_only_verified():
 
 def test_extract_colors_no_structured_no_llm_returns_empty():
     assert fields.extract_colors([], "t", [], "raw", llm_fn=None) == []
+
+
+# ── MDA-5 Lisa Yang handle 색추출 ──
+def test_extract_colors_from_handle_basic():
+    # the-alain-sweater-navy − title슬러그 = navy
+    assert fields.extract_colors_from_handle("the-alain-sweater-navy", "The Alain Sweater") == ["navy"]
+
+
+def test_extract_colors_from_handle_multiword_poetic_preserved():
+    # deep-cloud → "deep cloud" 한 색명으로 보존(토큰 쪼개지 않음) → MDA-8/큐가 판정
+    assert fields.extract_colors_from_handle(
+        "the-alayne-dress-deep-cloud", "The Alayne Dress") == ["deep cloud"]
+
+
+def test_extract_colors_from_handle_excludes_material_token():
+    # graphite-boucle: boucle(소재/기법)는 배제, graphite만
+    assert fields.extract_colors_from_handle(
+        "the-jayden-trousers-graphite-boucle", "The Jayden Trousers") == ["graphite"]
+
+
+def test_extract_colors_from_handle_keeps_foreign_unknown():
+    # noir(외국어 미지명)는 색후보로 보존 → colors_raw → MDA-7 큐
+    assert fields.extract_colors_from_handle("the-caisa-sweater-noir", "The Caisa Sweater") == ["noir"]
+
+
+def test_extract_colors_from_handle_empty_when_no_remainder():
+    # handle이 title슬러그와 같음(변형 색 없음) → []
+    assert fields.extract_colors_from_handle("the-plain-sweater", "The Plain Sweater") == []
+    assert fields.extract_colors_from_handle("", "The Plain Sweater") == []
+
+
+def test_extract_colors_ladder_uses_handle_when_no_structured():
+    # 구조화 색 없고 handle 있으면 handle rung (Lisa Yang 경로)
+    out = fields.extract_colors([], "The Alain Sweater", [], "raw",
+                                handle="the-alain-sweater-navy")
+    assert out == ["navy"]
+
+
+def test_extract_colors_structured_still_wins_over_handle():
+    opts = [{"name": "color", "values": ["Ivory"]}]
+    out = fields.extract_colors(opts, "t", [], "raw", handle="t-navy")
+    assert out == ["Ivory"]

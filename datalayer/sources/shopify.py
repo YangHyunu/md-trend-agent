@@ -53,7 +53,8 @@ def _map(p: dict, brand: str, currency: str | None, origin: str,
     options = p.get("options") or []
     raw_blob = " ".join([title, " ".join(tags), body,
                          " ".join(str(o) for o in options)])
-    colors_raw = fields.extract_colors(options, title, tags, raw_blob, llm_fn)
+    colors_raw = fields.extract_colors(options, title, tags, raw_blob,
+                                       handle=p.get("handle"), llm_fn=llm_fn)
     families: list[str] = []
     for c in colors_raw:
         fam = fields.map_color_family(c)

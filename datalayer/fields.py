@@ -172,12 +172,43 @@ def llm_color_fallback(title: str, tags: list[str], raw_blob: str,
     return [c for c in cands if verify_substring(c, raw_blob)]
 
 
+# handle 잔여에서 색 아닌 것(소재/기법) 배제. MATERIAL_KEYWORDS + 흔한 기법어.
+_NONCOLOR_SLUG_WORDS = set(MATERIAL_KEYWORDS) | {
+    "boucle", "knit", "ribbed", "jersey", "blend", "fine", "chunky", "melange",
+}
+
+
+def _slugify(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", (text or "").lower()).strip("-")
+
+
+def extract_colors_from_handle(handle: str | None, title: str) -> list[str]:
+    """handle − title슬러그 = 색명 (MDA-5, Lisa Yang 경로). 결정적, LLM無.
+
+    잔여는 한 색명으로 보존('deep-cloud'→'deep cloud'). 소재/기법어(boucle 등)만 배제.
+    미지명(noir/eclipse)도 색후보로 남겨 colors_raw 보존 → MDA-8/MDA-7 큐가 판정.
+    """
+    if not handle:
+        return []
+    tslug = _slugify(title)
+    h = handle.strip().lower()
+    remainder = h[len(tslug):].strip("-") if tslug and h.startswith(tslug) else ""
+    if not remainder:
+        return []
+    words = [w for w in remainder.split("-") if w and w not in _NONCOLOR_SLUG_WORDS]
+    return [" ".join(words)] if words else []
+
+
 def extract_colors(options: list[dict], title: str, tags: list[str],
-                   raw_blob: str, llm_fn: LLMFn | None = None) -> list[str]:
-    """① 구조화 options → ② LLM 추출 + substring 검증 (§12.2)."""
+                   raw_blob: str, *, handle: str | None = None,
+                   llm_fn: LLMFn | None = None) -> list[str]:
+    """색 사다리: ① 구조화 options → ② handle−title 잔여(MDA-5) → ③ LLM+검증 (§12.2)."""
     structured = pick_structured_colors(options)
     if structured:
         return structured
+    from_handle = extract_colors_from_handle(handle, title)
+    if from_handle:
+        return from_handle
     if llm_fn is None:
         return []
     return llm_color_fallback(title, tags, raw_blob, llm_fn)
