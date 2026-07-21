@@ -78,6 +78,13 @@ TIER2_DOMAINS = (  # 에디토리얼 (ccTLD 변종 포함 — 실측서 vogue.co
     "elle.com", "graziamagazine.com", "grazia.co.uk", "graziadaily.co.uk",
 )
 
+# 스테디셀러 신호 전용 커머스-에디토리얼 화이트리스트 (오너 승인 2026-07-21).
+# 판매신호("best-selling" 등) 근거로만 인정 — 트렌드 근거로는 여전히 불가(T4 유지).
+STEADY_SOURCES = (
+    "realsimple.com", "instyle.com", "whowhatwear.com", "refinery29.com",
+    "glamour.com", "marieclaire.com",
+)
+
 # 분석 조건 (POC_SPEC §5 고정)
 ANALYSIS = {
     "category": "여성 니트웨어 (캐시미어 중심)",
