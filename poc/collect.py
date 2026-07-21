@@ -173,6 +173,8 @@ def _offline_check() -> None:
     # 권위 티어 (MDA-10)
     assert classify_authority("https://www.businessoffashion.com/x", None) == (1, "T1 업계지")
     assert classify_authority("https://www.vogue.com/fashion/x", None)[0] == 2
+    assert classify_authority("https://www.vogue.co.uk/article/x", None)[0] == 2
+    assert classify_authority("https://graziadaily.co.uk/fashion/x", None)[0] == 2
     assert classify_authority("https://www.quince.com/w", "Quince") == (3, "T3 공식몰")
     assert classify_authority("https://m.blog.naver.com/foo/1", None) == (4, "T4 저권위")
     assert ev[0]["tier"] == 3 and ev[0]["authority"] == "T3 공식몰"
