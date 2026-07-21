@@ -91,22 +91,29 @@ def extract_item(product_type: str | None, title: str) -> str | None:
     return match_item(product_type) or match_item(title)
 
 
+def _item_sources(product: dict) -> list[tuple[str | None, str]]:
+    """아이템 raw 후보: ① product_type → ② title 순."""
+    return [(product.get("product_type"), "product_type"), (product.get("title"), "title")]
+
+
+def item_field() -> "NormalizedField":
+    """아이템 정규화 디스크립터 (MDA-7 공유 인터페이스). 색·실루엣도 동형으로 정의."""
+    from datalayer.review_queue import NormalizedField
+    return NormalizedField(name="item", keyword_fn=match_item,
+                           extract=_item_sources, multi_value=False)
+
+
 def extract_item_or_queue(product_type: str | None, title: str, *, brand: str,
                           queue, overrides: dict, product_id: str | None = None,
                           threshold: int = 10, llm_fn=None) -> str | None:
     """extract_item + 미매칭 사람확인 큐 승격/override 재사용 (MDA-7).
 
-    ① product_type → ② title 순으로 review_queue.map_or_queue(OVERRIDE→KEYWORD→
-    LLM 트리아지→큐) 적용. 둘 다 미매칭이면 각각 distinct raw_value로 큐에 남고 None.
+    공유 엔진 normalize(item_field, ...) 단일경로로 위임 — 색/실루엣과 동일 코드 흐름.
     """
-    from datalayer.review_queue import map_or_queue
-    for raw, source in ((product_type, "product_type"), (title, "title")):
-        canon = map_or_queue(raw, field="item", brand=brand, source=source,
-                             keyword_fn=match_item, overrides=overrides, queue=queue,
-                             product_id=product_id, threshold=threshold, llm_fn=llm_fn)
-        if canon:
-            return canon
-    return None
+    from datalayer.review_queue import normalize
+    return normalize(item_field(), {"product_type": product_type, "title": title},
+                     brand=brand, queue=queue, overrides=overrides,
+                     product_id=product_id, threshold=threshold, llm_fn=llm_fn)
 
 
 def pick_structured_colors(options: list[dict]) -> list[str]:

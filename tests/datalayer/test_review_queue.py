@@ -1,5 +1,6 @@
 from datalayer.review_queue import (
-    IGNORE, ReviewQueue, load_overrides, map_or_queue, render_coverage_line, save_overrides,
+    IGNORE, NormalizedField, ReviewQueue, load_overrides, map_or_queue, normalize,
+    render_coverage_line, save_overrides,
 )
 
 
@@ -109,6 +110,43 @@ def test_overrides_save_load_roundtrip_case_insensitive(tmp_path):
 
 def test_load_overrides_missing_file_returns_empty():
     assert load_overrides("/nonexistent/path/overrides.json") == {}
+
+
+def _upper_or_none(raw: str) -> str | None:
+    return raw.upper() if raw.isalpha() else None
+
+
+def test_normalize_single_value_returns_first_canon_across_sources():
+    # 아이템류: product_type 미매칭 → title에서 매칭, 첫 canon 반환
+    ITEM = NormalizedField(
+        name="item", keyword_fn=_upper_or_none, multi_value=False,
+        extract=lambda p: [(p.get("product_type"), "product_type"), (p.get("title"), "title")],
+    )
+    q = ReviewQueue()
+    out = normalize(ITEM, {"product_type": "SS26", "title": "sweater"},
+                    brand="b", queue=q, overrides={})
+    assert out == "SWEATER"
+    # 미매칭 source(SS26)는 큐에 남음
+    assert q.get("item", "b", "SS26") is not None
+
+
+def test_normalize_multi_value_collects_all_canons_dedup():
+    # 색/실루엣류: 한 상품서 여러 raw 후보 → 매칭 canon 전부 수집(순서유지·중복제거)
+    SIL = NormalizedField(
+        name="silhouette", keyword_fn=_upper_or_none, multi_value=True,
+        extract=lambda p: [(w, "body") for w in p["words"]],
+    )
+    q = ReviewQueue()
+    out = normalize(SIL, {"words": ["relaxed", "oversized", "relaxed", "70%wool"]},
+                    brand="b", queue=q, overrides={})
+    assert out == ["RELAXED", "OVERSIZED"]           # dedup + 순서유지
+    assert q.get("silhouette", "b", "70%wool") is not None  # 미매칭은 큐
+
+
+def test_normalize_multi_value_empty_when_no_match():
+    SIL = NormalizedField(name="silhouette", keyword_fn=lambda r: None, multi_value=True,
+                          extract=lambda p: [("xyz", "body")])
+    assert normalize(SIL, {}, brand="b", queue=ReviewQueue(), overrides={}) == []
 
 
 def test_render_coverage_line_three_tiers():

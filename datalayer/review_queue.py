@@ -124,6 +124,40 @@ def map_or_queue(raw_value: str | None, *, field: str, brand: str, source: str,
     return None
 
 
+@dataclass
+class NormalizedField:
+    """정규화 필드 디스크립터 — 필드마다 다른 것만 담고, 큐/override/트리아지는 normalize()가 공용 처리 (MDA-7).
+
+    필드 추가 = (vocab)keyword_fn + (소스)extract 두 개만. item/color/silhouette 전부 이걸로 붙음.
+    """
+    name: str                                             # "item" | "color" | "silhouette"
+    keyword_fn: KeywordFn                                 # 닫힌 어휘셋 매처 (raw → canonical | None)
+    extract: Callable[[dict], list[tuple[str | None, str]]]  # product → [(raw, source_label)] 우선순위순
+    multi_value: bool = False                             # item=False(첫 canon), color/silhouette=True(전부 수집)
+
+
+def normalize(spec: NormalizedField, product: dict, *, brand: str,
+              queue: "ReviewQueue", overrides: dict[str, str],
+              product_id: str | None = None, threshold: int = 10,
+              llm_fn: LLMTriageFn | None = None):
+    """디스크립터 하나로 OVERRIDE→KEYWORD→트리아지→큐 공용 실행 (MDA-7 단일경로).
+
+    single_value: 소스 순회하며 첫 canon 반환(없으면 None).
+    multi_value: 모든 raw 후보의 canon 수집(순서유지·중복제거). 미매칭 raw는 각각 큐로.
+    """
+    results: list[str] = []
+    for raw, source in spec.extract(product):
+        canon = map_or_queue(raw, field=spec.name, brand=brand, source=source,
+                             keyword_fn=spec.keyword_fn, overrides=overrides, queue=queue,
+                             product_id=product_id, threshold=threshold, llm_fn=llm_fn)
+        if canon:
+            if not spec.multi_value:
+                return canon
+            if canon not in results:
+                results.append(canon)
+    return results if spec.multi_value else None
+
+
 def render_coverage_line(unmatched: int, total: int, *, label: str = "아이템") -> str:
     """§3-b 커버리지 배지 — 미확인 비율에 비례한 3단계(POC_SPEC MDA-7).
 
