@@ -38,6 +38,18 @@ def test_extract_materials_empty_when_no_keyword():
     assert fields.extract_materials("plain top", "") == []
 
 
+def test_extract_materials_word_boundary_lambswool_not_wool():
+    # lambswool은 wool을 substring으로 포함하나 wool 과보고 금지 (MDA-2)
+    mats = fields.extract_materials("100% Lambswool Scarf", "", "")
+    assert "lambswool" in mats
+    assert "wool" not in mats
+
+
+def test_extract_materials_word_boundary_silky_not_silk():
+    # silky는 silk 아님 (MDA-2)
+    assert fields.extract_materials("Silky smooth finish", "", "") == []
+
+
 def test_extract_item_prefers_product_type():
     assert fields.extract_item("Sweater", "Cozy Knit", ["knit"]) == "Sweater"
 
