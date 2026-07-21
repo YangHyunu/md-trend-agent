@@ -7,7 +7,7 @@ class ProductRecord:
     brand: str
     url: str
     item: str | None                 # product_type (없으면 None)
-    colors_raw: list[str]            # 원색명 (8계열 매핑은 플랜 #3)
+    colors_raw: list[str]            # 원색명 (근거 보존)
     price_native: float | None       # shop 통화 기준 금액
     currency: str | None             # ISO 코드 (USD/EUR/GBP)
     compare_at_native: float | None  # 정가 (세일 감지용)
@@ -16,6 +16,7 @@ class ProductRecord:
     published_at: str | None         # ISO 날짜 (YYYY-MM-DD)
     source: str                      # 성공한 rung (예 "shopify")
     silhouettes: list[str] = field(default_factory=list)  # 핏/볼륨 (MDA-4 rung1)
+    colors_family: list[str] = field(default_factory=list)  # 8계열 매핑 (MDA-8)
 
 
 @dataclass

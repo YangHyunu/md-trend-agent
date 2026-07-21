@@ -43,7 +43,7 @@ def _dl_cells(agg: dict) -> tuple[str, str, str]:
 def _datalayer_section(aggregates: list[dict]) -> list[str]:
     """§3-b: datalayer 코드계산 브랜드 블록 (POC_SPEC §12.4). LLM 아닌 실측."""
     L = ["## 3-b. 상품 실측 데이터 (datalayer, Shopify 직수집)\n",
-         "> 가격은 **native 통화**(KRW 환산 = 통화 정규화 이후). 컬러는 **원색명**(8계열 매핑 이후).",
+         "> 가격은 **native 통화**(KRW 환산 = 통화 정규화 이후). 컬러는 **원색명 + 8계열**(원색명은 근거 보존, 계열은 매핑 후).",
          "> 코드가 직접 집계 — LLM 해석 아님. 비Shopify 몰은 소스 미구현으로 실패 기록.\n"]
     ok = [a for a in aggregates if a.get("count")]
     failed = [a for a in aggregates if not a.get("count")]
@@ -55,6 +55,12 @@ def _datalayer_section(aggregates: list[dict]) -> list[str]:
             L.append(f"- 가격({cur}): p25 {p['p25']} / p50 {p['p50']} / p75 {p['p75']} "
                      f"(최저 {p['min']}–최고 {p['max']}, n={p['n']}), 세일 {round(a['sale_ratio']*100)}%")
         L.append(f"- 컬러 top: {_fmt_counts(a['colors_top'])}")
+        if a.get("colors_family_top"):
+            L.append(f"- 컬러 8계열: {_fmt_counts(a['colors_family_top'])}")
+        fam_badge = render_coverage_line(a.get("colors_family_unmatched", 0), a["count"],
+                                         label="컬러계열")
+        if fam_badge:
+            L.append(fam_badge)
         L.append(f"- 아이템: {_fmt_counts(a['items_top'])}")
         badge = render_coverage_line(a.get("items_unmatched", 0), a["count"])
         if badge:

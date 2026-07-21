@@ -43,6 +43,11 @@ def brand_aggregate(result: BrandExtractionResult, *, as_of: date | None = None,
 
     agg["sale_ratio"] = round(sum(1 for p in prods if p.on_sale) / len(prods), 2)
     agg["colors_top"] = Counter(c for p in prods for c in p.colors_raw).most_common(top_n)
+    agg["colors_family_top"] = Counter(
+        f for p in prods for f in p.colors_family).most_common(top_n)
+    # 색은 있는데 8계열 매핑이 하나도 안 된 상품 = 미확인(→ MDA-7 큐 대상)
+    agg["colors_family_unmatched"] = sum(
+        1 for p in prods if p.colors_raw and not p.colors_family)
     agg["items_top"] = Counter(p.item for p in prods if p.item).most_common(top_n)
     agg["items_unmatched"] = sum(1 for p in prods if not p.item)
     agg["materials_top"] = Counter(m for p in prods for m in p.materials).most_common(top_n)

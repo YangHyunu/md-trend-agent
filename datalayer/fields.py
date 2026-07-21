@@ -181,3 +181,55 @@ def extract_colors(options: list[dict], title: str, tags: list[str],
     if llm_fn is None:
         return []
     return llm_color_fallback(title, tags, raw_blob, llm_fn)
+
+
+# 원색명 → 고정 8계열 (POC_SPEC §12 컬러). 애매한 색(khaki/midnight/teal/coral/rust)은
+# 일부러 제외 → 큐로 사람판정(오매핑 방지). 미지명(noir/eclipse)도 None → MDA-7 큐.
+# 순서 중요: 멀티·패턴 토큰 우선(패턴이면 색보다 앞섬), 그다음 구체색은 긴 토큰 우선.
+COLOR_FAMILIES: dict[str, list[str]] = {
+    "멀티·패턴":   ["multi", "print", "printed", "stripe", "striped", "floral", "check",
+                   "checked", "plaid", "tartan", "jacquard", "fairisle", "fair isle",
+                   "colourblock", "colorblock", "houndstooth", "argyle", "gingham"],
+    "뉴트럴":     ["black", "white", "ivory", "cream", "ecru", "bone", "chalk", "snow",
+                   "off-white", "grey", "gray", "charcoal", "graphite", "silver", "slate",
+                   "ash", "heather", "pewter", "jet"],
+    "베이지·브라운": ["beige", "camel", "tan", "taupe", "sand", "oatmeal", "biscuit", "nude",
+                   "brown", "chocolate", "coffee", "mocha", "caramel", "toffee", "walnut",
+                   "cognac", "truffle", "mushroom", "chestnut", "sable", "hazelnut"],
+    "블루·네이비":  ["navy", "blue", "cobalt", "denim", "indigo", "petrol", "sky", "powder",
+                   "azure", "delft", "cornflower", "sapphire"],
+    "그린":       ["green", "olive", "sage", "forest", "emerald", "moss", "pistachio",
+                   "mint", "loden", "bottle", "fern"],
+    "레드·핑크":   ["red", "burgundy", "wine", "maroon", "brick", "scarlet", "crimson",
+                   "cherry", "ruby", "pink", "rose", "blush", "fuchsia", "magenta", "salmon"],
+    "옐로·오렌지":  ["yellow", "mustard", "gold", "ochre", "butter", "lemon", "saffron",
+                   "orange", "apricot", "peach", "terracotta", "amber", "honey"],
+    "퍼플":       ["purple", "lilac", "lavender", "plum", "mauve", "aubergine", "violet",
+                   "amethyst", "orchid"],
+}
+# (토큰, 계열) 평탄화: 멀티·패턴 먼저(dict 순서), 각 계열 내 긴 토큰 우선.
+_COLOR_KW: list[tuple[str, str]] = [
+    (tok, fam)
+    for fam, toks in COLOR_FAMILIES.items()
+    for tok in sorted(toks, key=len, reverse=True)
+]
+
+
+def map_color_family(raw: str | None) -> str | None:
+    """원색명 → 8계열 canonical (MDA-8). 단어경계 매칭, 패턴 우선. 미지명·애매색은 None(→큐)."""
+    if not raw:
+        return None
+    t = raw.lower()
+    for tok, fam in _COLOR_KW:
+        if re.search(r"(?<![a-z])" + re.escape(tok) + r"(?![a-z])", t):
+            return fam
+    return None
+
+
+def color_field() -> "NormalizedField":
+    """색 정규화 디스크립터 (MDA-8, MDA-7 공유 엔진). colors_raw의 각 원색을 8계열로."""
+    from datalayer.review_queue import NormalizedField
+    return NormalizedField(
+        name="color", keyword_fn=map_color_family, multi_value=True,
+        extract=lambda p: [(c, "colors_raw") for c in p.get("colors_raw", [])],
+    )

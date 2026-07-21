@@ -53,11 +53,18 @@ def _map(p: dict, brand: str, currency: str | None, origin: str,
     options = p.get("options") or []
     raw_blob = " ".join([title, " ".join(tags), body,
                          " ".join(str(o) for o in options)])
+    colors_raw = fields.extract_colors(options, title, tags, raw_blob, llm_fn)
+    families: list[str] = []
+    for c in colors_raw:
+        fam = fields.map_color_family(c)
+        if fam and fam not in families:
+            families.append(fam)
     return ProductRecord(
         brand=brand,
         url=f"{origin}/products/{p.get('handle', '')}",
         item=fields.extract_item(p.get("product_type"), title),
-        colors_raw=fields.extract_colors(options, title, tags, raw_blob, llm_fn),
+        colors_raw=colors_raw,
+        colors_family=families,
         price_native=price,
         currency=currency,
         compare_at_native=compare,
