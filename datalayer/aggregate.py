@@ -62,4 +62,9 @@ def brand_aggregate(result: BrandExtractionResult, *, as_of: date | None = None,
         "recent_count": sum(1 for d in dated if d >= cutoff),
         "latest": max(dated) if dated else None,
     }
+    # 신상 출시 = 최근 window 내 상품 최신순 top3 (홈피 파싱 대신 published_at 실측 신호).
+    recent = sorted((p for p in prods if p.published_at and p.published_at >= cutoff),
+                    key=lambda p: p.published_at, reverse=True)
+    agg["newest"] = [{"url": p.url, "item": p.item, "published_at": p.published_at}
+                     for p in recent[:3]]
     return agg

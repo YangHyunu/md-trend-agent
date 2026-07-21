@@ -1,5 +1,6 @@
 """Markdown 보고서 렌더러. 코드가 렌더링 — LLM 자유 생성 금지 (POC_SPEC §6)."""
 import sys
+from collections import Counter
 from datetime import date
 
 from poc import config
@@ -28,20 +29,6 @@ def _cell(s: str) -> str:
 def _fmt_counts(pairs: list) -> str:
     """[(name, count), ...] → 'name(count), ...'. 빈 리스트는 '근거 없음'."""
     return ", ".join(f"{_cell(str(n))}({c})" for n, c in pairs) if pairs else "근거 없음"
-
-
-def _dl_cells(agg: dict) -> tuple[str, str, str]:
-    """datalayer 집계 → Design Map (컬러, 소재, 가격대) 셀. 코드 실측값으로 §3 채움."""
-    colors = _fmt_counts(agg.get("colors_top", [])[:5])
-    materials = _fmt_counts(agg.get("materials_top", [])[:4])
-    p = agg.get("price")
-    if p:
-        cur = agg.get("currency") or "?"
-        price = (f"{cur} p25 {p['p25']:.0f}/p50 {p['p50']:.0f}/p75 {p['p75']:.0f} "
-                 f"(세일 {round(agg['sale_ratio'] * 100)}%)")
-    else:
-        price = "근거 없음"
-    return colors, materials, price
 
 
 def _pending_line(agg: dict) -> str:
@@ -117,9 +104,11 @@ def _trend_crosscheck(text: str, aggregates: list[dict]) -> str:
 
 
 def _datalayer_section(aggregates: list[dict]) -> list[str]:
-    """§3-b: datalayer 코드계산 브랜드 블록 — 브랜드별 미니 테이블 (POC_SPEC §12.4)."""
-    L = ["## 3-b. 상품 실측 데이터 (datalayer, Shopify 직수집)\n",
-         "> 가격은 **native 통화**(KRW 환산 = 통화 정규화 이후). 컬러는 **원색명 + 8계열**(원색명은 근거 보존, 계열은 매핑 후).",
+    """부록 상세: datalayer 코드계산 브랜드 블록 — 브랜드별 미니 테이블 (POC_SPEC §12.4).
+
+    상위 헤딩은 호출자(§7 부록)가 붙인다.
+    """
+    L = ["> 가격은 **native 통화**(KRW 환산 = 통화 정규화 이후). 컬러는 **원색명 + 8계열**(원색명은 근거 보존, 계열은 매핑 후).",
          "> 코드가 직접 집계 — LLM 해석 아님. 비Shopify 몰은 소스 미구현으로 실패 기록.\n"]
     ok = [a for a in aggregates if a.get("count")]
     failed = [a for a in aggregates if not a.get("count")]
@@ -154,6 +143,81 @@ def _datalayer_section(aggregates: list[dict]) -> list[str]:
     return L
 
 
+def _bar(pairs: list, topn: int = 5) -> str:
+    """분포를 막대+% 한 줄로. 분모 = 전체 합(상위 topn만 표시). MD가 '그림'으로 읽게."""
+    tot = sum(c for _, c in pairs) or 1
+    out = []
+    for n, c in pairs[:topn]:
+        share = c / tot
+        out.append(f"{_cell(str(n))} {'█' * max(1, round(share * 8))} {round(share * 100)}%")
+    return " · ".join(out) if out else "근거 없음"
+
+
+def _roll(aggregates: list[dict], key: str) -> list:
+    """브랜드 across 카운트 합산 → most_common. (컬러계열/아이템/실루엣/소재는 상품수 합산 가능)."""
+    c: Counter = Counter()
+    for a in aggregates:
+        for n, cnt in (a.get(key) or []):
+            c[n] += cnt
+    return c.most_common()
+
+
+def _market_rollup_section(aggregates: list[dict]) -> list[str]:
+    """§3 시장 실측 스냅샷 — 전 브랜드 롤업 통계 요약(막대). 개별 수치 아님."""
+    ok = [a for a in aggregates if a.get("count")]
+    if not ok:
+        return []
+    total = sum(a["count"] for a in ok)
+    items, fams = _roll(ok, "items_top"), _roll(ok, "colors_family_top")
+    sils, mats = _roll(ok, "silhouettes_top"), _roll(ok, "materials_top")
+    top1 = lambda r: r[0][0] if r else "—"
+    L = [f"## 3. 시장 실측 스냅샷 ({len(ok)}개 몰 · 상품 {total}개)\n",
+         "> 벤치마크 몰 전체 롤업 — 코드 집계. 브랜드별 개별 수치는 §7 부록.\n",
+         f"**지배축: 아이템 {top1(items)} · 컬러 {top1(fams)} · 실루엣 {top1(sils)} · 소재 {top1(mats)}**\n",
+         f"- 아이템: {_bar(items)}",
+         f"- 컬러계열: {_bar(fams, 8)}",
+         f"- 실루엣: {_bar(sils)}",
+         f"- 소재: {_bar(mats)}"]
+    ladder = sorted(((a["brand"], a["price"]["p50"], a.get("currency") or "?")
+                     for a in ok if a.get("price")), key=lambda x: x[1])
+    if ladder:
+        L.append("- 가격 포지셔닝(중앙값·통화 상이): "
+                 + " · ".join(f"{b} {cur}{p:.0f}" for b, p, cur in ladder))
+    L.append("")
+    return L
+
+
+def _brand_signature_section(aggregates: list[dict]) -> list[str]:
+    """§4 브랜드 시그니처 — 브랜드당 한 줄 프로필(주력·지배축·가격·신상). 매트릭스 폐기."""
+    ok = [a for a in aggregates if a.get("count")]
+    failed = [a for a in aggregates if not a.get("count")]
+    L = ["## 4. 브랜드 시그니처\n",
+         "> 브랜드당 한 줄 = 주력 아이템·지배 컬러/실루엣·가격 중앙값·신상. 전체 필드는 §7 부록.\n"]
+    for a in ok:
+        top_items = ", ".join(n for n, _ in (a.get("items_top") or [])[:2]) or "—"
+        fam = (a.get("colors_family_top") or [["—"]])[0][0]
+        sils = ", ".join(n for n, _ in (a.get("silhouettes_top") or [])[:2]) or "—"
+        p, cur = a.get("price"), a.get("currency") or "?"
+        price = (f"중앙 {cur}{p['p50']:.0f}(세일 {round(a['sale_ratio'] * 100)}%)"
+                 if p else "가격 미상")
+        nw = a["newness"]
+        line = (f"- **{_cell(a['brand'])}** ({a['count']}) — 주력 {_cell(top_items)} · "
+                f"{_cell(fam)} 지배 · {_cell(sils)} · {price} · "
+                f"최근{nw['weeks']}주 {nw['recent_count']}신상")
+        newest = a.get("newest") or []
+        if newest:
+            links = ", ".join(f"[{_cell(p.get('item') or '상품')} {p['published_at'][5:]}]({p['url']})"
+                              for p in newest)
+            line += f"\n  - 신상 출시: {links}"
+        L.append(line)
+    if failed:
+        L.append("")
+        L.append("**미수집(소스 미구현 갭):** "
+                 + ", ".join(f"{a['brand']}({a.get('failure') or '0건'})" for a in failed))
+    L.append("")
+    return L
+
+
 def render_report(analysis: AnalysisOutput, naver: dict,
                   crawl_results: list[dict], evidence: list[dict],
                   datalayer_aggregates: list[dict] | None = None) -> str:
@@ -171,54 +235,48 @@ def render_report(analysis: AnalysisOutput, naver: dict,
             return " ⚠️ *국내 블로그 단독 근거 — 참고용*"
         return ""
 
-    L.append("## 1. 핵심 요약\n")
-    for t in analysis.trends[:3]:
-        L.append(f"- [{t.phase}] {t.name} ({_ids(t.evidence_ids, ev_urls)}){_domestic_only(t)}")
+    # 근거(T1·T2) 있는 트렌드만 헤드라인. 근거 없는 관찰은 §7 부록으로 강등.
+    backed = [t for t in analysis.trends if t.evidence_ids]
+    demoted = [t for t in analysis.trends if not t.evidence_ids]
+
+    L.append("## 1. 한 장 요약\n")
+    if backed:
+        for t in backed[:3]:
+            L.append(f"- **뜨는 것**: [{t.phase}] {t.name} ({_ids(t.evidence_ids, ev_urls)}){_domestic_only(t)}")
+    else:
+        L.append("- **뜨는 것**: 이번 수집엔 T1·T2 권위 근거 트렌드 없음 → §3 시장 실측·§7 미검증 관찰 참고")
     for act in analysis.actions[:3]:
-        L.append(f"- 액션: {act.recommendation} ({_ids(act.evidence_ids, ev_urls)})")
+        L.append(f"- **MD 액션**: {act.recommendation}")
     L.append("")
 
-    # MD 워크플로우 ①: 글로벌 트렌드 — 뭐가 뜨나. 트렌드마다 벤치마크 실측 조인.
-    L.append("## 2. 글로벌 트렌드\n")
-    L.append("> 각 트렌드 아래 **실측 대조** = 벤치마크 몰(datalayer 수집분)에서 해당 축의 실제 노출 — 코드 조인, LLM 아님.\n")
-    for phase in ("상승", "주류", "포화", "둔화"):
-        items = [t for t in analysis.trends if t.phase == phase]
-        if items:
+    # MD 워크플로우 ①: 트렌드 — 권위 근거(T1·T2)만. 각 트렌드에 벤치마크 실측 조인.
+    L.append("## 2. 트렌드 (권위 근거 T1·T2)\n")
+    L.append("> 업계지·에디토리얼 근거가 있는 트렌드만. 근거 없는 관찰은 §7 부록. "
+             "각 줄 아래 **실측 대조** = 벤치마크 몰에서 실제 노출(코드 조인).\n")
+    if backed:
+        for phase in ("상승", "주류", "포화", "둔화"):
+            items = [t for t in backed if t.phase == phase]
+            if not items:
+                continue
             L.append(f"### {phase}")
             for t in items:
                 L.append(f"- **{t.name}**: {t.rationale} "
                          f"({_ids(t.evidence_ids, ev_urls)}){_domestic_only(t)}")
-                cross = _trend_crosscheck(f"{t.name} {t.rationale}",
-                                          datalayer_aggregates or [])
+                cross = _trend_crosscheck(f"{t.name} {t.rationale}", datalayer_aggregates or [])
                 if cross:
                     L.append(cross)
             L.append("")
+    else:
+        L.append("_권위 근거 트렌드 0건 — 크롤이 T1·T2 매체를 못 잡음. "
+                 "시장 방향은 §3 실측으로 판단._\n")
 
-    L.append("## 3. 벤치마크 Design Map\n")
-    L.append("> 컬러·소재·가격대는 Shopify 몰의 경우 **datalayer 실측**(코드 집계)으로 채움. "
-             "비Shopify 몰은 웹 크롤 근거(E###)만 — 소스 미구현 갭.")
-    L.append("")  # 인용문과 테이블 사이 빈 줄 — 없으면 렌더러가 붙여서 테이블 깨짐
-    L.append("| 브랜드 | 핵심 아이템 | 컬러 | 소재 | 실루엣 | 디테일 | 가격대 | 근거 |")
-    L.append("|---|---|---|---|---|---|---|---|")
-    dl_by_brand = {a["brand"].strip().lower(): a
-                   for a in (datalayer_aggregates or []) if a.get("count")}
-    for r in analysis.design_map:
-        agg = dl_by_brand.get(r.brand.strip().lower())
-        if agg:  # Shopify 실측으로 컬러/소재/가격 override (§12.4: 코드가 수치 확정)
-            colors, materials, price = _dl_cells(agg)
-            ev = "datalayer 실측"
-        else:
-            colors, materials, price = r.colors, r.materials, r.price_range
-            ev = _ids(r.evidence_ids, ev_urls)
-        L.append(f"| {_cell(r.brand)} | {_cell(r.key_items)} | {_cell(colors)} | {_cell(materials)} | "
-                 f"{_cell(r.silhouettes)} | {_cell(r.details)} | {_cell(price)} | {ev} |")
-    L.append("")
-
+    # MD 워크플로우 ②: 시장 실측 스냅샷(통계 요약) + 브랜드 시그니처
     if datalayer_aggregates:
-        L.extend(_datalayer_section(datalayer_aggregates))
+        L.extend(_market_rollup_section(datalayer_aggregates))
+        L.extend(_brand_signature_section(datalayer_aggregates))
 
     # MD 워크플로우 ③: 국내 수요 — 한국서 먹히나 (데이터랩 정량 + 국내 웹 참고)
-    L.append("## 4. 국내 수요 신호 (NAVER 데이터랩)\n")
+    L.append("## 5. 국내 수요 신호 (NAVER 데이터랩)\n")
     L.append(RATIO_WARNING)
     signals = naver.get("signals", [])
     if any(s["coverage_mismatch"] for s in signals):
@@ -233,7 +291,7 @@ def render_report(analysis: AnalysisOutput, naver: dict,
                  f"최근 {latest['period']} ratio {latest['ratio']}, "
                  f"기간 내 최고 {peak['period']} ratio {peak['ratio']}")
     if not signals:
-        L.append("- NAVER 신호 없음 (수집 실패 — 7절 참고)")
+        L.append("- NAVER 신호 없음 (수집 실패 — §7 부록 참고)")
     L.append("")
     domestic = [e for e in evidence if _is_domestic_blog(e.get("url", ""))]
     if domestic:
@@ -242,17 +300,44 @@ def render_report(analysis: AnalysisOutput, naver: dict,
             L.append(f"- [{e['id']}]({e['url']})")
         L.append("")
 
-    L.append("## 5. 상품 구성 공백과 기회\n")
+    # MD 워크플로우 ④: 갭 → 액션
+    L.append("## 6. 상품 구성 공백 & MD 액션\n")
+    L.append("**공백:**")
     for g in analysis.gaps:
         L.append(f"- {g}")
-    L.append("")
-
-    L.append("## 6. MD 추천 액션\n")
+    L.append("\n**추천 액션:**")
     for i, act in enumerate(analysis.actions, 1):
         L.append(f"{i}. **{act.recommendation}** — {act.rationale} ({_ids(act.evidence_ids, ev_urls)})")
     L.append("")
 
-    L.append("## 7. 데이터 한계와 수집 실패\n")
+    # §7 부록: 미검증 관찰 + 상세 실측(접기) + 출처 + 한계
+    L.append("## 7. 부록\n")
+    if demoted:
+        L.append("### 미검증 관찰 (권위 근거 없음 — 참고만)\n")
+        L.append("> 권위 매체(T1·T2) 근거가 없어 트렌드로 확정 못 함. 단, 벤치마크 실측 대조는 유효.\n")
+        for t in demoted:
+            L.append(f"- [{t.phase}] **{t.name}**: {t.rationale}{_domestic_only(t)}")
+            cross = _trend_crosscheck(f"{t.name} {t.rationale}", datalayer_aggregates or [])
+            if cross:
+                L.append(cross)
+        L.append("")
+
+    if datalayer_aggregates:
+        L.append("### 브랜드 상세 실측 (datalayer, Shopify 직수집)\n")
+        L.append("<details><summary>펼치기 — 브랜드별 전체 필드 실측 + 확인 대기 큐</summary>\n")
+        L.extend(_datalayer_section(datalayer_aggregates))
+        L.append("</details>\n")
+
+    L.append("### 출처\n")
+    L.append("> 권위 티어: T1 업계지 · T2 에디토리얼 = 트렌드 근거 / T3 공식몰 = 벤치마크 실측 / T4 저권위 = 참고만.\n")
+    L.append("| ID | 권위 | URL | 브랜드 | 수집일 |")
+    L.append("|---|---|---|---|---|")
+    for e in evidence:
+        auth = e.get("authority") or ("T3 공식몰" if e.get("brand") else "T4 저권위")
+        L.append(f"| {e['id']} | {auth} | {e['url']} | {e.get('brand') or '-'} | {e['fetched_at'][:10]} |")
+    L.append("")
+
+    L.append("### 데이터 한계와 수집 실패\n")
     for lim in analysis.limitations:
         L.append(f"- {lim}")
     failed = [r for r in crawl_results if not r["ok"]]
@@ -264,33 +349,20 @@ def render_report(analysis: AnalysisOutput, naver: dict,
         L.append(f"- NAVER {f['call']} 실패 — {' '.join(f['error'].split())}")
     L.append("- PLUSH'MERE: Instagram — SNS 자동 수집 제외 (reference_only)")
     L.append("")
-
-    L.append("## 8. 출처\n")
-    L.append("> 권위 티어: T1 업계지 · T2 에디토리얼 = 트렌드 근거 / T3 공식몰 = 벤치마크 실측 / T4 저권위 = 참고만.\n")
-    L.append("| ID | 권위 | URL | 브랜드 | 수집일 |")
-    L.append("|---|---|---|---|---|")
-    for e in evidence:
-        auth = e.get("authority") or ("T3 공식몰" if e.get("brand") else "T4 저권위")
-        L.append(f"| {e['id']} | {auth} | {e['url']} | {e.get('brand') or '-'} | {e['fetched_at'][:10]} |")
-    L.append("")
     return "\n".join(L)
 
 
 def _offline_check() -> None:
-    from poc.analyze import Action, AnalysisOutput, DesignMapRow, Trend
+    from poc.analyze import Action, AnalysisOutput, Trend
     analysis = AnalysisOutput(
-        trends=[Trend(name="브러시드 캐시미어", phase="상승", rationale="r", evidence_ids=["E001"]),
-                Trend(name="그레이 간절기 니트", phase="상승", rationale="국내 블로그",
-                      evidence_ids=["E017"]),
-                Trend(name="근거약한트렌드", phase="둔화", rationale="r2", evidence_ids=[])],
-        design_map=[DesignMapRow(brand="Quince", key_items="아이템A|아이템B", colors="근거 없음",
-                                 materials="캐시미어100", silhouettes="클래식", details="근거 없음",
-                                 price_range="$49.90", evidence_ids=["E002"]),
-                    DesignMapRow(brand="Arch4", key_items="Sweaters", colors="근거 없음",
-                                 materials="근거 없음", silhouettes="근거 없음", details="d",
-                                 price_range="근거 없음", evidence_ids=["E005"])],
+        trends=[Trend(name="브러시드 캐시미어 소재 세분화", phase="상승",
+                      rationale="에디토리얼이 캐시미어 소재 세분화를 지목", evidence_ids=["E014"]),
+                Trend(name="근거약한관찰", phase="둔화",
+                      rationale="정성 관찰 — 자동매칭 축 없음", evidence_ids=[])],
+        design_map=[],  # §3 매트릭스 폐기 — 더 이상 렌더 안 함
         gaps=["컬러블록 부재"],
-        actions=[Action(recommendation="a", rationale="b", evidence_ids=["E001"])],
+        actions=[Action(recommendation="뉴트럴 스웨터 확대", rationale="시장 지배축",
+                        evidence_ids=["E014"])],
         limitations=["표본 작음 — 추가 조사 필요"])
     naver = {"signals": [{"source": "shopping_keyword", "group": "캐시미어니트",
                           "series": [{"period": "2026-06-01", "ratio": 100.0}],
@@ -298,52 +370,69 @@ def _offline_check() -> None:
                           "coverage_mismatch": True, "note": ""}],
              "failures": [{"call": "search_trend", "error": "401"}]}
     crawl = [{"url": "https://x.com", "ok": False, "text": "", "error": "timeout", "fetched_at": "t"}]
-    ev = [{"id": "E001", "url": "https://extreme-cashmere.com/", "brand": "Extreme cashmere",
-           "source_type": "official", "fetched_at": "2026-07-20T00:00:00"},
-          {"id": "E017", "url": "https://m.blog.naver.com/xxx/1", "brand": None,
-           "source_type": "web", "fetched_at": "2026-07-20T00:00:00"}]
+    ev = [{"id": "E014", "url": "https://www.harpersbazaar.com/x", "brand": None, "tier": 2,
+           "authority": "T2 에디토리얼", "fetched_at": "2026-07-20T00:00:00"},
+          {"id": "E017", "url": "https://m.blog.naver.com/xxx/1", "brand": None, "tier": 4,
+           "authority": "T4 저권위", "fetched_at": "2026-07-20T00:00:00"}]
     dl = [{"brand": "Arch4", "source": "shopify", "count": 2, "failure": None,
            "currency": "GBP", "price": {"min": 130.0, "max": 240.0, "p25": 150.0,
                                         "p50": 185.0, "p75": 220.0, "n": 2},
-           "sale_ratio": 0.5, "colors_top": [("Camel", 2)], "items_top": [("Sweater", 2)],
-           "items_unmatched": 1, "materials_top": [("cashmere", 2)],
-           "newness": {"weeks": 8, "recent_count": 1, "latest": "2026-07-01"}},
+           "sale_ratio": 0.5, "colors_top": [("Camel", 2)],
+           "colors_family_top": [("뉴트럴", 2)], "silhouettes_top": [("Relaxed", 2)],
+           "items_top": [("Sweater", 2)], "items_unmatched": 1,
+           "materials_top": [("cashmere", 2)],
+           "newness": {"weeks": 8, "recent_count": 1, "latest": "2026-07-01"},
+           "newest": [{"url": "https://arch4.co.uk/p/x", "item": "Sweater",
+                       "published_at": "2026-07-01"}]},
           {"brand": "Quince", "source": None, "count": 0, "failure": "지원 소스 없음"}]
     md = render_report(analysis, naver, crawl, ev, datalayer_aggregates=dl)
-    assert "## 3-b" in md and "직수집" in md, "datalayer 섹션 누락"
-    assert "Arch4 — shopify, 2개 상품" in md, "datalayer 성공 브랜드 렌더 실패"
-    assert "| 가격(GBP) | p25 150.0" in md, "가격밴드 렌더 실패"
-    assert "🔴 아이템 1건(50%)" in md, "확인대기 통합줄(≥20%=🔴) 렌더 실패 (MDA-7)"
-    assert "[E001](https://extreme-cashmere.com/)" in md, "E코드 출처 링크 렌더 실패"
-    assert "Camel(2)" in md, "컬러 top 렌더 실패"
-    assert "Quince: 지원 소스 없음" in md, "미수집 브랜드 기록 실패"
-    assert render_report(analysis, naver, crawl, ev).find("## 3-b") == -1, "aggregates 없으면 섹션 미출력이어야"
-    arch_row = [l for l in md.splitlines() if l.startswith("| Arch4")][0]
-    assert "Camel(2)" in arch_row and "datalayer 실측" in arch_row, "§3 datalayer override 실패"
-    assert "GBP p25 150" in arch_row, "§3 가격 override 실패"
-    quince_row = [l for l in md.splitlines() if l.startswith("| Quince")][0]
-    assert "$49.90" in quince_row, "비Shopify override 없이 LLM 값 유지 실패"
-    assert "상대값" in md, "ratio 주의문 누락"
-    assert "20~39세" in md, "coverage_mismatch 주의문 누락"
-    assert "근거 없음" in md
-    assert "PLUSH'MERE" in md
-    assert "https://x.com" in md and "timeout" in md, "실패 URL 누락"
-    assert "| E001 |" in md, "출처 테이블 누락"
-    assert "search_trend" in md and "401" in md, "NAVER 실패 표시 누락"
-    assert "근거약한트렌드" in md and "근거 없음" in md.split("근거약한트렌드")[1][:80], "_ids 빈 리스트 폴백 미동작"
-    # MD 서사 (B): 글로벌 트렌드 → 벤치마크 → 국내 수요 순서
-    assert md.index("## 2. 글로벌 트렌드") < md.index("## 3. 벤치마크 Design Map") \
-        < md.index("## 4. 국내 수요 신호"), "MD 워크플로우 섹션 순서 깨짐"
-    # 트렌드↔실측 조인: '브러시드 캐시미어' → 소재 cashmere → Arch4(2)
+
+    # 섹션 순서 = MD 워크플로우 (요약→트렌드→시장실측→브랜드시그니처→국내→갭·액션→부록)
+    order = ["## 1. 한 장 요약", "## 2. 트렌드", "## 3. 시장 실측 스냅샷",
+             "## 4. 브랜드 시그니처", "## 5. 국내 수요", "## 6. 상품 구성 공백", "## 7. 부록"]
+    idx = [md.index(s) for s in order]
+    assert idx == sorted(idx), f"섹션 순서 깨짐: {idx}"
+
+    # §2 트렌드: 권위 근거(T2) 있는 것만, 실측 조인 붙음
+    assert "브러시드 캐시미어 소재 세분화" in md.split("## 3.")[0], "backed 트렌드가 §2에 없음"
     assert "실측 대조: 소재 cashmere: Arch4(2) · 1/1몰" in md, "트렌드 실측 조인 실패"
-    assert "자동 매칭 축 없음" in md, "정성 트렌드 정직 표기 누락"
-    # 국내 블로그 단독 근거 마커 + 국내 웹 참고 격리
-    assert "국내 블로그 단독 근거" in md, "국내 블로그 마커 누락"
+    assert "[E014](https://www.harpersbazaar.com/x)" in md, "T2 근거 링크 실패"
+
+    # 강등: 근거 없는 관찰은 §2 아님, §7 부록 미검증 관찰에
+    assert "근거약한관찰" not in md.split("## 3.")[0], "근거없는 관찰이 §2에 남음(강등 실패)"
+    assert md.index("근거약한관찰") > md.index("## 7. 부록"), "강등 트렌드가 부록에 없음"
+    assert "미검증 관찰" in md, "미검증 관찰 헤딩 누락"
+    assert "자동 매칭 축 없음" in md, "강등 트렌드 실측 조인 정직표기 누락"
+
+    # §3 시장 실측 스냅샷: 롤업 통계(막대)
+    assert "지배축: 아이템 Sweater · 컬러 뉴트럴 · 실루엣 Relaxed" in md, "지배축 요약 실패"
+    assert "가격 포지셔닝(중앙값·통화 상이): Arch4 GBP185" in md, "가격 사다리 실패"
+    assert "█" in md, "막대 렌더 실패"
+
+    # §4 브랜드 시그니처: 한 줄 프로필
+    assert "**Arch4** (2) — 주력 Sweater · 뉴트럴 지배 · Relaxed · 중앙 GBP185" in md, "시그니처 줄 실패"
+    assert "신상 출시: [Sweater 07-01](https://arch4.co.uk/p/x)" in md, "신상 상품 링크 실패"
+    assert "미수집(소스 미구현 갭):** Quince(지원 소스 없음)" in md, "미수집 브랜드 기록 실패"
+
+    # §7 부록: 상세 실측 접기 + 확인대기 + 출처(권위) + 한계
+    assert "<details>" in md and "브랜드 상세 실측" in md, "상세 실측 접기 누락"
+    assert "🔴 아이템 1건(50%)" in md, "확인대기 통합줄(≥20%=🔴) 렌더 실패 (MDA-7)"
+    assert "Camel(2)" in md, "상세 컬러 top 렌더 실패"
+    assert "### 출처" in md and "| E014 |" in md and "T2 에디토리얼" in md, "출처 권위 테이블 누락"
+
+    # 국내 수요: NAVER 주의문 + 블로그 격리
+    assert "상대값" in md and "20~39세" in md, "NAVER 주의문 누락"
     assert "국내 웹 참고" in md and "[E017](https://m.blog.naver.com/xxx/1)" in md, "국내 참고 격리 누락"
-    row_line = [l for l in md.splitlines() if l.startswith("| Quince")][0]
-    # 이스케이프된 파이프(\|)는 실제 열 구분자가 아니므로 제외하고 셀 수를 센다.
-    assert row_line.replace("\\|", "").count("|") == 9, "파이프 이스케이프 실패로 열 수 불일치"
-    assert "아이템A\\|아이템B" in md
+
+    # 실패 기록
+    assert "https://x.com" in md and "timeout" in md, "실패 URL 누락"
+    assert "search_trend" in md and "401" in md, "NAVER 실패 표시 누락"
+    assert "PLUSH'MERE" in md
+
+    # aggregates 없으면 §3·§4 미출력
+    no_dl = render_report(analysis, naver, crawl, ev)
+    assert "## 3. 시장 실측 스냅샷" not in no_dl and "## 4. 브랜드 시그니처" not in no_dl, \
+        "aggregates 없을 때 실측 섹션이 나옴"
     print("report offline checks OK")
 
 

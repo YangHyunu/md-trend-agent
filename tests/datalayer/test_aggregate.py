@@ -5,9 +5,9 @@ from datalayer.records import BrandExtractionResult, ProductRecord
 
 
 def _p(price=None, cur="GBP", compare=None, sale=False, colors=None,
-       item="Sweater", mats=None, pub=None, silhouettes=None, fam=None):
+       item="Sweater", mats=None, pub=None, silhouettes=None, fam=None, url="u"):
     return ProductRecord(
-        brand="b", url="u", item=item, colors_raw=colors or [],
+        brand="b", url=url, item=item, colors_raw=colors or [],
         price_native=price, currency=cur, compare_at_native=compare,
         on_sale=sale, materials=mats or [], published_at=pub, source="shopify",
         silhouettes=silhouettes or [], colors_family=fam or [])
@@ -89,3 +89,23 @@ def test_aggregate_newness_counts_within_window():
     assert agg["newness"]["recent_count"] == 2   # 07-01, 06-10 (01-01 제외, None 제외)
     assert agg["newness"]["latest"] == "2026-07-01"
     assert agg["newness"]["weeks"] == 8
+
+
+def test_aggregate_newest_products_latest_first_within_window():
+    # 신상 = window 내 상품 최신순 top3, url/item/published_at 보존. 오래된·None은 제외.
+    prods = [_p(pub="2026-06-10", url="/p/old-recent", item="Cardigan"),
+             _p(pub="2026-07-14", url="/p/newest", item="Sweater"),
+             _p(pub="2026-01-01", url="/p/stale"), _p(pub=None, url="/p/undated")]
+    agg = brand_aggregate(BrandExtractionResult(brand="b", source="shopify", products=prods),
+                          as_of=date(2026, 7, 20))
+    assert agg["newest"] == [
+        {"url": "/p/newest", "item": "Sweater", "published_at": "2026-07-14"},
+        {"url": "/p/old-recent", "item": "Cardigan", "published_at": "2026-06-10"},
+    ]  # window 밖(01-01)·undated 제외, 최신순
+
+
+def test_aggregate_newest_empty_when_no_recent():
+    prods = [_p(pub="2026-01-01"), _p(pub=None)]
+    agg = brand_aggregate(BrandExtractionResult(brand="b", source="shopify", products=prods),
+                          as_of=date(2026, 7, 20))
+    assert agg["newest"] == []
