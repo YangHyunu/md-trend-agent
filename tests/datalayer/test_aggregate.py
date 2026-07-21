@@ -5,12 +5,12 @@ from datalayer.records import BrandExtractionResult, ProductRecord
 
 
 def _p(price=None, cur="GBP", compare=None, sale=False, colors=None,
-       item="Sweater", mats=None, pub=None, silhouettes=None):
+       item="Sweater", mats=None, pub=None, silhouettes=None, fam=None):
     return ProductRecord(
         brand="b", url="u", item=item, colors_raw=colors or [],
         price_native=price, currency=cur, compare_at_native=compare,
         on_sale=sale, materials=mats or [], published_at=pub, source="shopify",
-        silhouettes=silhouettes or [])
+        silhouettes=silhouettes or [], colors_family=fam or [])
 
 
 def test_percentile_linear_interpolation():
@@ -61,6 +61,15 @@ def test_aggregate_colors_items_materials_ranked_by_frequency():
     assert agg["colors_top"][0] == ("Camel", 3)
     assert agg["items_top"][0] == ("Sweater", 2)
     assert agg["materials_top"][0] == ("cashmere", 3)
+
+
+def test_aggregate_color_families_ranked_and_unmatched_counted():
+    prods = [_p(colors=["Navy", "Black"], fam=["블루·네이비", "뉴트럴"]),
+             _p(colors=["Navy"], fam=["블루·네이비"]),
+             _p(colors=["noir"], fam=[])]  # 색은 있는데 8계열 미매핑 → unmatched
+    agg = brand_aggregate(BrandExtractionResult(brand="b", source="shopify", products=prods))
+    assert agg["colors_family_top"][0] == ("블루·네이비", 2)
+    assert agg["colors_family_unmatched"] == 1
 
 
 def test_aggregate_silhouettes_ranked_and_unmatched_counted():

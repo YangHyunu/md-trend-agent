@@ -78,6 +78,49 @@ def test_extract_silhouettes_dedups_repeated_term():
     assert fields.extract_silhouettes("Oversized oversized cocoon coat", [], "") == ["Oversized", "Cocoon"]
 
 
+# ── MDA-8 색 8계열 정규화 ──
+def test_map_color_family_neutral_and_token_inside_phrase():
+    assert fields.map_color_family("BLACK") == "뉴트럴"
+    assert fields.map_color_family("HEATHER GREY") == "뉴트럴"   # 구절 안의 grey
+    assert fields.map_color_family("Ivory") == "뉴트럴"
+
+
+def test_map_color_family_maps_each_family():
+    assert fields.map_color_family("Camel") == "베이지·브라운"
+    assert fields.map_color_family("DELFT BLUE COMBO") == "블루·네이비"  # blue, combo는 토큰 아님
+    assert fields.map_color_family("Sage Brush") == "그린"
+    assert fields.map_color_family("Burgundy") == "레드·핑크"
+    assert fields.map_color_family("BUTTER") == "옐로·오렌지"
+    assert fields.map_color_family("Aubergine") == "퍼플"
+
+
+def test_map_color_family_pattern_wins_over_color():
+    # 패턴 단어가 있으면 멀티·패턴(색보다 우선)
+    assert fields.map_color_family("Blue Floral") == "멀티·패턴"
+    assert fields.map_color_family("Striped") == "멀티·패턴"
+
+
+def test_map_color_family_word_boundary_no_substring_falsematch():
+    # 'redwood' 안의 red로 오매칭 안됨 (경계)
+    assert fields.map_color_family("Redwood") is None
+
+
+def test_map_color_family_unknown_and_ambiguous_return_none():
+    # 미지명(외국어/시적)·의도적 제외(애매) → None → 큐 대상
+    for raw in ("noir", "eclipse", "limone", "deep cloud", "khaki", "midnight"):
+        assert fields.map_color_family(raw) is None, raw
+
+
+def test_color_field_routes_unmatched_to_queue_multi_value():
+    # 색은 NormalizedField(multi_value=True)로 공유 엔진에 붙음 (MDA-7/MDA-8)
+    from datalayer.review_queue import normalize
+    q = ReviewQueue()
+    product = {"colors_raw": ["Navy", "noir", "Sage"]}  # Navy·Sage 매칭, noir 미매칭
+    out = normalize(fields.color_field(), product, brand="b", queue=q, overrides={})
+    assert out == ["블루·네이비", "그린"]           # 매칭 canon만, 순서유지
+    assert q.get("color", "b", "noir") is not None    # 미매칭은 큐로
+
+
 def test_extract_materials_still_matches_standalone_keyword():
     mats = fields.extract_materials("Wool and Silk Blend", "", "")
     assert set(mats) == {"wool", "silk"}
