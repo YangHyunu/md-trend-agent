@@ -45,6 +45,13 @@ def test_aggregate_price_skips_none_prices():
     assert agg["price"]["n"] == 1 and agg["price"]["min"] == 150.0
 
 
+def test_aggregate_price_skips_zero_price_outliers():
+    # 기프트카드/플레이스홀더 variant가 price=0으로 min을 왜곡하는 사례 (MDA-2)
+    prods = [_p(price=0.0), _p(price=100.0), _p(price=200.0)]
+    agg = brand_aggregate(BrandExtractionResult(brand="b", source="shopify", products=prods))
+    assert agg["price"]["n"] == 2 and agg["price"]["min"] == 100.0
+
+
 def test_aggregate_colors_items_materials_ranked_by_frequency():
     prods = [_p(colors=["Camel", "Grey"], item="Sweater", mats=["cashmere"]),
              _p(colors=["Camel"], item="Cardigan", mats=["cashmere", "wool"]),

@@ -1,4 +1,5 @@
 """공유 필드 폴백 헬퍼. POC_SPEC §12.2 (구조화→LLM→substring 검증)."""
+import re
 from typing import Callable
 
 LLMFn = Callable[[str], str]
@@ -27,11 +28,13 @@ MATERIAL_KEYWORDS = [
     "viscose", "leather", "angora",
 ]
 
+_MATERIAL_PATTERNS = [(m, re.compile(rf"\b{re.escape(m)}\b")) for m in MATERIAL_KEYWORDS]
+
 
 def extract_materials(*texts: str) -> list[str]:
-    """tags·title·body_html 등에서 소재 키워드 스캔 (§12.2)."""
+    """tags·title·body_html 등에서 소재 키워드 스캔, 단어경계로 부분매치 방지 (§12.2)."""
     blob = " ".join(t for t in texts if t).lower()
-    return [m for m in MATERIAL_KEYWORDS if m in blob]
+    return [m for m, pattern in _MATERIAL_PATTERNS if pattern.search(blob)]
 
 
 def extract_item(product_type: str | None, title: str, tags: list[str],
