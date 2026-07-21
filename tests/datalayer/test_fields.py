@@ -45,6 +45,39 @@ def test_extract_materials_word_boundary_avoids_substring_false_positives():
     assert set(mats) == {"lambswool"}
 
 
+def test_extract_silhouettes_multi_value_in_appearance_order():
+    # 한 상품에 여러 fit → 등장 순서대로 전부 수집 (MDA-4 rung1)
+    out = fields.extract_silhouettes("Relaxed Fit Oversized Sweater", [], "")
+    assert out == ["Relaxed", "Oversized"]
+
+
+def test_extract_silhouettes_reads_body_html():
+    # 실루엣어는 주로 body_html(설명글)에 있음 — 거기서도 잡아야
+    out = fields.extract_silhouettes("Plain Sweater", [], "A wonderfully relaxed, oversized silhouette.")
+    assert out == ["Relaxed", "Oversized"]
+
+
+def test_extract_silhouettes_excludes_texture_and_quality_noise():
+    # ribbed/crew(텍스처·넥라인), soft/light/classic(품질) = 실루엣 아님 → 배제
+    out = fields.extract_silhouettes("Ribbed Crew Sweater", ["cable"], "soft, light, classic knit")
+    assert out == []
+
+
+def test_extract_silhouettes_wide_bare_excluded_but_wide_leg_kept():
+    # 'wide' 단독(wide neck 등)은 모호 → 배제. 'wide-leg'만 채택.
+    assert fields.extract_silhouettes("Wide Neck Top", [], "") == []
+    assert fields.extract_silhouettes("Wide-leg Trousers", [], "") == ["Wide-leg"]
+
+
+def test_extract_silhouettes_slim_fit_folds_to_slim_no_double():
+    # 'slim fit'은 bare 'slim'으로 잡힘 — 중복 카운트 안 함
+    assert fields.extract_silhouettes("Slim Fit Jeans", [], "") == ["Slim"]
+
+
+def test_extract_silhouettes_dedups_repeated_term():
+    assert fields.extract_silhouettes("Oversized oversized cocoon coat", [], "") == ["Oversized", "Cocoon"]
+
+
 def test_extract_materials_still_matches_standalone_keyword():
     mats = fields.extract_materials("Wool and Silk Blend", "", "")
     assert set(mats) == {"wool", "silk"}

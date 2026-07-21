@@ -5,11 +5,12 @@ from datalayer.records import BrandExtractionResult, ProductRecord
 
 
 def _p(price=None, cur="GBP", compare=None, sale=False, colors=None,
-       item="Sweater", mats=None, pub=None):
+       item="Sweater", mats=None, pub=None, silhouettes=None):
     return ProductRecord(
         brand="b", url="u", item=item, colors_raw=colors or [],
         price_native=price, currency=cur, compare_at_native=compare,
-        on_sale=sale, materials=mats or [], published_at=pub, source="shopify")
+        on_sale=sale, materials=mats or [], published_at=pub, source="shopify",
+        silhouettes=silhouettes or [])
 
 
 def test_percentile_linear_interpolation():
@@ -60,6 +61,15 @@ def test_aggregate_colors_items_materials_ranked_by_frequency():
     assert agg["colors_top"][0] == ("Camel", 3)
     assert agg["items_top"][0] == ("Sweater", 2)
     assert agg["materials_top"][0] == ("cashmere", 3)
+
+
+def test_aggregate_silhouettes_ranked_and_unmatched_counted():
+    prods = [_p(silhouettes=["Relaxed", "Oversized"]),
+             _p(silhouettes=["Relaxed"]),
+             _p(silhouettes=[])]  # 실루엣 근거 없음 → unmatched
+    agg = brand_aggregate(BrandExtractionResult(brand="b", source="shopify", products=prods))
+    assert agg["silhouettes_top"][0] == ("Relaxed", 2)
+    assert agg["silhouettes_unmatched"] == 1
 
 
 def test_aggregate_newness_counts_within_window():
