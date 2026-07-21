@@ -8,6 +8,8 @@ _PRODUCTS = [
         "body_html": "<p>100% Cashmere</p>", "published_at": "2026-06-15T00:00:00Z",
         "options": [{"name": "Colour", "values": ["Camel", "Grey"]}],
         "variants": [{"price": "240.00", "compare_at_price": "625.00"}],
+        "images": [{"src": "https://cdn.shop.test/camel-cardigan-1.jpg"},
+                   {"src": "https://cdn.shop.test/camel-cardigan-2.jpg"}],
     },
     {  # product_type 비어있음 → 아이템 LLM 폴백 대상, color 옵션 없음
         "handle": "wool-scarf", "title": "Merino Scarf",

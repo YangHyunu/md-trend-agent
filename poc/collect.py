@@ -19,24 +19,38 @@ def _canonical(url: str) -> str:
 
 
 def discover_urls() -> list[dict]:
+    """2트랙 발견: ①권위 타겟(include_domains=T1+T2) ②일반. 권위 결과가 앞 —
+    select_urls가 순서대로 담으므로 크롤 예산에서 권위 URL이 우선된다."""
     from tavily import TavilyClient
     client = TavilyClient(api_key=os.environ["TAVILY_API_KEY"])
     found, seen = [], set()
-    for q in config.TAVILY_QUERIES[: config.MAX_TAVILY_QUERIES]:
+
+    def _run(q: str, domains: tuple | None = None) -> None:
+        kwargs = {"include_domains": list(domains)} if domains else {}
         try:
-            resp = client.search(q, max_results=5)
+            resp = client.search(q, max_results=5, **kwargs)
         except Exception as e:
             print(f" tavily FAIL {q!r}: {type(e).__name__}", file=sys.stderr)
-            continue
+            return
         for r in resp.get("results", []):
             u = r.get("url", "")
             if not u.startswith(("http://", "https://")):
+                continue
+            # 권위 트랙: Tavily가 결과 부족 시 include_domains 밖 T4를 섞음(실측) — 여기서 차단
+            if domains and classify_authority(u, None)[0] > 2:
                 continue
             c = _canonical(u)
             if c in seen:
                 continue
             seen.add(c)
-            found.append({"url": u, "found_via": q})
+            found.append({"url": u, "found_via": q,
+                          "authority_targeted": bool(domains)})
+
+    authority = config.TIER1_DOMAINS + config.TIER2_DOMAINS
+    for q in config.AUTHORITY_QUERIES:
+        _run(q, authority)
+    for q in config.TAVILY_QUERIES[: config.MAX_TAVILY_QUERIES]:
+        _run(q)
     return found
 
 
@@ -96,13 +110,16 @@ async def _crawl_async(urls: list[str]) -> list[dict]:
                     crawler.arun(url=u), timeout=config.CRAWL_TIMEOUT_SEC)
                 text = str(r.markdown or "") if r.success else ""
                 ok = len(text) >= MIN_TEXT_CHARS
+                meta = r.metadata or {}
+                image = meta.get("og:image") or meta.get("twitter:image") or None
                 results.append({
                     "url": u, "ok": ok, "text": text[:STORE_TEXT_CHARS],
+                    "image": image,  # 대표 이미지 (og:image) — 보고서 썸네일용
                     "error": None if ok else f"추출 실패: 본문 {len(text)}자 (<{MIN_TEXT_CHARS})",
                     "fetched_at": fetched_at,
                 })
             except Exception as e:
-                results.append({"url": u, "ok": False, "text": "",
+                results.append({"url": u, "ok": False, "text": "", "image": None,
                                 "error": f"{type(e).__name__}: {e}", "fetched_at": fetched_at})
             print(f" crawl {'OK ' if results[-1]['ok'] else 'FAIL'} {u}", file=sys.stderr)
     return results
@@ -147,6 +164,7 @@ def build_evidence(crawl_results: list[dict]) -> list[dict]:
             "source_type": "official" if brand else "web",
             "tier": tier,
             "authority": authority,
+            "image": r.get("image"),
             "fetched_at": r["fetched_at"],
         })
     return evidence
@@ -166,10 +184,11 @@ def _offline_check() -> None:
     urls = select_urls([{"url": f"https://site{i}.com/p", "found_via": "q"} for i in range(30)])
     assert len(urls) <= config.MAX_CRAWL_URLS
     fake = [{"url": "https://www.quince.com/w", "ok": True, "text": "x" * 600,
-             "error": None, "fetched_at": "t"},
+             "image": "https://cdn.quince.com/og.jpg", "error": None, "fetched_at": "t"},
             {"url": "https://a.com", "ok": False, "text": "", "error": "e", "fetched_at": "t"}]
     ev = build_evidence(fake)
     assert len(ev) == 1 and ev[0]["id"] == "E001" and ev[0]["source_type"] == "official"
+    assert ev[0]["image"] == "https://cdn.quince.com/og.jpg", "og:image evidence 통과 실패"
     # 권위 티어 (MDA-10)
     assert classify_authority("https://www.businessoffashion.com/x", None) == (1, "T1 업계지")
     assert classify_authority("https://www.vogue.com/fashion/x", None)[0] == 2

@@ -17,6 +17,7 @@ class ProductRecord:
     source: str                      # 성공한 rung (예 "shopify")
     silhouettes: list[str] = field(default_factory=list)  # 핏/볼륨 (MDA-4 rung1)
     colors_family: list[str] = field(default_factory=list)  # 8계열 매핑 (MDA-8)
+    image_url: str | None = None     # 대표 이미지 (피드 첫 이미지 — 보고서 썸네일용)
 
 
 @dataclass

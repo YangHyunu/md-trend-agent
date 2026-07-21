@@ -16,6 +16,8 @@ def test_shopify_fetch_maps_products():
     assert cardigan.published_at == "2026-06-15"
     assert cardigan.url == "https://shop.test/products/camel-cardigan"
     assert cardigan.source == "shopify"
+    assert cardigan.image_url == "https://cdn.shop.test/camel-cardigan-1.jpg"  # 첫 이미지
+    assert recs[1].image_url is None                      # images 없는 상품
 
 
 def test_shopify_item_llm_fallback_when_product_type_blank():
