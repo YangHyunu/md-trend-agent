@@ -4,7 +4,6 @@ from datetime import date
 
 from poc import config
 from poc.analyze import AnalysisOutput
-from datalayer.review_queue import render_coverage_line
 
 RATIO_WARNING = ("> **주의:** NAVER ratio는 각 요청 결과의 최대값을 100으로 둔 상대값입니다. "
                  "서로 다른 요청의 값을 절대량처럼 비교할 수 없습니다.")
@@ -12,8 +11,13 @@ COVERAGE_WARNING = ("> **주의:** Shopping Insight는 25~39세를 정확히 표
                     "20~39세(coverage_mismatch) 데이터입니다.")
 
 
-def _ids(evidence_ids: list[str]) -> str:
-    return ", ".join(evidence_ids) if evidence_ids else "근거 없음"
+def _ids(evidence_ids: list[str], urls: dict[str, str] | None = None) -> str:
+    """E코드 나열. urls 주면 [E013](url) 클릭 링크로 — §8 출처와 즉시 연결."""
+    if not evidence_ids:
+        return "근거 없음"
+    if not urls:
+        return ", ".join(evidence_ids)
+    return ", ".join(f"[{i}]({urls[i]})" if i in urls else i for i in evidence_ids)
 
 
 def _cell(s: str) -> str:
@@ -40,8 +44,24 @@ def _dl_cells(agg: dict) -> tuple[str, str, str]:
     return colors, materials, price
 
 
+def _pending_line(agg: dict) -> str:
+    """브랜드 블록 하단 통합 확인대기 줄 — 3단계 이모지(🔴≥20%/🟡5~20%/⚪<5%) 유지 (MDA-7)."""
+    n = agg["count"]
+    parts = []
+    for label, key in (("아이템", "items_unmatched"), ("컬러계열", "colors_family_unmatched"),
+                       ("실루엣", "silhouettes_unmatched")):
+        u = agg.get(key, 0)
+        if u <= 0:
+            continue
+        ratio = u / n
+        emoji = "🔴" if ratio >= 0.20 else ("🟡" if ratio >= 0.05 else "⚪")
+        parts.append(f"{emoji} {label} {u}건({round(ratio * 100)}%)")
+    return ("⚠️ 확인 대기: " + " · ".join(parts) +
+            " — 사람확인 큐(item_review_queue.json)") if parts else ""
+
+
 def _datalayer_section(aggregates: list[dict]) -> list[str]:
-    """§3-b: datalayer 코드계산 브랜드 블록 (POC_SPEC §12.4). LLM 아닌 실측."""
+    """§3-b: datalayer 코드계산 브랜드 블록 — 브랜드별 미니 테이블 (POC_SPEC §12.4)."""
     L = ["## 3-b. 상품 실측 데이터 (datalayer, Shopify 직수집)\n",
          "> 가격은 **native 통화**(KRW 환산 = 통화 정규화 이후). 컬러는 **원색명 + 8계열**(원색명은 근거 보존, 계열은 매핑 후).",
          "> 코드가 직접 집계 — LLM 해석 아님. 비Shopify 몰은 소스 미구현으로 실패 기록.\n"]
@@ -50,31 +70,26 @@ def _datalayer_section(aggregates: list[dict]) -> list[str]:
     for a in ok:
         cur = a.get("currency") or "?"
         p = a.get("price")
-        L.append(f"### {a['brand']} — {a['source']}, {a['count']}개 상품")
-        if p:
-            L.append(f"- 가격({cur}): p25 {p['p25']} / p50 {p['p50']} / p75 {p['p75']} "
-                     f"(최저 {p['min']}–최고 {p['max']}, n={p['n']}), 세일 {round(a['sale_ratio']*100)}%")
-        L.append(f"- 컬러 top: {_fmt_counts(a['colors_top'])}")
-        if a.get("colors_family_top"):
-            L.append(f"- 컬러 8계열: {_fmt_counts(a['colors_family_top'])}")
-        fam_badge = render_coverage_line(a.get("colors_family_unmatched", 0), a["count"],
-                                         label="컬러계열")
-        if fam_badge:
-            L.append(fam_badge)
-        L.append(f"- 아이템: {_fmt_counts(a['items_top'])}")
-        badge = render_coverage_line(a.get("items_unmatched", 0), a["count"])
-        if badge:
-            L.append(badge)
-        L.append(f"- 소재: {_fmt_counts(a['materials_top'])}")
-        if a.get("silhouettes_top"):
-            L.append(f"- 실루엣: {_fmt_counts(a['silhouettes_top'])}")
-        sil_badge = render_coverage_line(a.get("silhouettes_unmatched", 0), a["count"],
-                                         label="실루엣")
-        if sil_badge:
-            L.append(sil_badge)
         nw = a["newness"]
-        L.append(f"- 신상(최근 {nw['weeks']}주): {nw['recent_count']}개, 최신 {nw['latest'] or '없음'}")
+        L.append(f"### {a['brand']} — {a['source']}, {a['count']}개 상품\n")
+        L.append("| 필드 | 실측 |")
+        L.append("|---|---|")
+        if p:
+            L.append(f"| 가격({cur}) | p25 {p['p25']} / p50 {p['p50']} / p75 {p['p75']} "
+                     f"(최저 {p['min']}–최고 {p['max']}, n={p['n']}) · 세일 {round(a['sale_ratio']*100)}% |")
+        L.append(f"| 컬러 | {_fmt_counts(a['colors_top'])} |")
+        if a.get("colors_family_top"):
+            L.append(f"| 8계열 | {_fmt_counts(a['colors_family_top'])} |")
+        L.append(f"| 아이템 | {_fmt_counts(a['items_top'])} |")
+        L.append(f"| 소재 | {_fmt_counts(a['materials_top'])} |")
+        if a.get("silhouettes_top"):
+            L.append(f"| 실루엣 | {_fmt_counts(a['silhouettes_top'])} |")
+        L.append(f"| 신상 {nw['weeks']}주 | {nw['recent_count']}개, 최신 {nw['latest'] or '없음'} |")
         L.append("")
+        pending = _pending_line(a)
+        if pending:
+            L.append(pending)
+            L.append("")
     if failed:
         L.append("**미수집(소스 사다리 rung2-4 미구현 — 정직한 갭):**")
         for a in failed:
@@ -88,6 +103,7 @@ def render_report(analysis: AnalysisOutput, naver: dict,
                   datalayer_aggregates: list[dict] | None = None) -> str:
     L: list[str] = []
     a = config.ANALYSIS
+    ev_urls = {e["id"]: e["url"] for e in evidence}  # E코드 → 출처 링크 (§8과 연결)
     L.append(f"# 캐시미어·니트웨어 트렌드 보고서 (PoC)\n")
     L.append(f"- 생성일: {date.today().isoformat()}")
     L.append(f"- 조건: {a['category']} / {a['target']} / {a['price_range']} / 최근 {a['period_weeks']}주")
@@ -95,9 +111,9 @@ def render_report(analysis: AnalysisOutput, naver: dict,
 
     L.append("## 1. 핵심 요약\n")
     for t in analysis.trends[:3]:
-        L.append(f"- [{t.phase}] {t.name} ({_ids(t.evidence_ids)})")
+        L.append(f"- [{t.phase}] {t.name} ({_ids(t.evidence_ids, ev_urls)})")
     for act in analysis.actions[:3]:
-        L.append(f"- 액션: {act.recommendation} ({_ids(act.evidence_ids)})")
+        L.append(f"- 액션: {act.recommendation} ({_ids(act.evidence_ids, ev_urls)})")
     L.append("")
 
     L.append("## 2. 수요 신호 (NAVER)\n")
@@ -121,6 +137,7 @@ def render_report(analysis: AnalysisOutput, naver: dict,
     L.append("## 3. Design Map\n")
     L.append("> 컬러·소재·가격대는 Shopify 몰의 경우 **datalayer 실측**(코드 집계)으로 채움. "
              "비Shopify 몰은 웹 크롤 근거(E###)만 — 소스 미구현 갭.")
+    L.append("")  # 인용문과 테이블 사이 빈 줄 — 없으면 렌더러가 붙여서 테이블 깨짐
     L.append("| 브랜드 | 핵심 아이템 | 컬러 | 소재 | 실루엣 | 디테일 | 가격대 | 근거 |")
     L.append("|---|---|---|---|---|---|---|---|")
     dl_by_brand = {a["brand"].strip().lower(): a
@@ -132,7 +149,7 @@ def render_report(analysis: AnalysisOutput, naver: dict,
             ev = "datalayer 실측"
         else:
             colors, materials, price = r.colors, r.materials, r.price_range
-            ev = _ids(r.evidence_ids)
+            ev = _ids(r.evidence_ids, ev_urls)
         L.append(f"| {_cell(r.brand)} | {_cell(r.key_items)} | {_cell(colors)} | {_cell(materials)} | "
                  f"{_cell(r.silhouettes)} | {_cell(r.details)} | {_cell(price)} | {ev} |")
     L.append("")
@@ -146,7 +163,7 @@ def render_report(analysis: AnalysisOutput, naver: dict,
         if items:
             L.append(f"### {phase}")
             for t in items:
-                L.append(f"- **{t.name}**: {t.rationale} ({_ids(t.evidence_ids)})")
+                L.append(f"- **{t.name}**: {t.rationale} ({_ids(t.evidence_ids, ev_urls)})")
             L.append("")
 
     L.append("## 5. 상품 구성 공백과 기회\n")
@@ -156,7 +173,7 @@ def render_report(analysis: AnalysisOutput, naver: dict,
 
     L.append("## 6. MD 추천 액션\n")
     for i, act in enumerate(analysis.actions, 1):
-        L.append(f"{i}. **{act.recommendation}** — {act.rationale} ({_ids(act.evidence_ids)})")
+        L.append(f"{i}. **{act.recommendation}** — {act.rationale} ({_ids(act.evidence_ids, ev_urls)})")
     L.append("")
 
     L.append("## 7. 데이터 한계와 수집 실패\n")
@@ -213,8 +230,9 @@ def _offline_check() -> None:
     md = render_report(analysis, naver, crawl, ev, datalayer_aggregates=dl)
     assert "## 3-b" in md and "직수집" in md, "datalayer 섹션 누락"
     assert "Arch4 — shopify, 2개 상품" in md, "datalayer 성공 브랜드 렌더 실패"
-    assert "가격(GBP): p25 150.0" in md, "가격밴드 렌더 실패"
-    assert "🔴 **아이템 확인 필요 1건**" in md, "커버리지 배지(≥20%) 렌더 실패 (MDA-7)"
+    assert "| 가격(GBP) | p25 150.0" in md, "가격밴드 렌더 실패"
+    assert "🔴 아이템 1건(50%)" in md, "확인대기 통합줄(≥20%=🔴) 렌더 실패 (MDA-7)"
+    assert "[E001](https://extreme-cashmere.com/)" in md, "E코드 출처 링크 렌더 실패"
     assert "Camel(2)" in md, "컬러 top 렌더 실패"
     assert "Quince: 지원 소스 없음" in md, "미수집 브랜드 기록 실패"
     assert render_report(analysis, naver, crawl, ev).find("## 3-b") == -1, "aggregates 없으면 섹션 미출력이어야"
