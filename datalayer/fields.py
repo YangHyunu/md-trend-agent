@@ -91,6 +91,24 @@ def extract_item(product_type: str | None, title: str) -> str | None:
     return match_item(product_type) or match_item(title)
 
 
+def extract_item_or_queue(product_type: str | None, title: str, *, brand: str,
+                          queue, overrides: dict, product_id: str | None = None,
+                          threshold: int = 10, llm_fn=None) -> str | None:
+    """extract_item + 미매칭 사람확인 큐 승격/override 재사용 (MDA-7).
+
+    ① product_type → ② title 순으로 review_queue.map_or_queue(OVERRIDE→KEYWORD→
+    LLM 트리아지→큐) 적용. 둘 다 미매칭이면 각각 distinct raw_value로 큐에 남고 None.
+    """
+    from datalayer.review_queue import map_or_queue
+    for raw, source in ((product_type, "product_type"), (title, "title")):
+        canon = map_or_queue(raw, field="item", brand=brand, source=source,
+                             keyword_fn=match_item, overrides=overrides, queue=queue,
+                             product_id=product_id, threshold=threshold, llm_fn=llm_fn)
+        if canon:
+            return canon
+    return None
+
+
 def pick_structured_colors(options: list[dict]) -> list[str]:
     """options 중 name이 color/colour(철자 방어)인 것의 values."""
     for o in options:

@@ -1,4 +1,5 @@
 from datalayer import fields
+from datalayer.review_queue import IGNORE, ReviewQueue
 
 
 def test_to_float_strips_commas_and_handles_none():
@@ -85,6 +86,43 @@ def test_extract_item_word_boundary_avoids_substring_false_match():
 def test_extract_item_longest_keyword_wins_in_multi_item_title():
     # 'Sari Wrap Knit Skirt': skirt(5) > wrap(4) → Skirt
     assert fields.extract_item("70% Wool 30% Cashmere", "Sari Wrap Knit Skirt") == "Skirt"
+
+
+def test_extract_item_or_queue_matches_without_queueing():
+    q = ReviewQueue()
+    item = fields.extract_item_or_queue("Sweater", "Cozy Knit", brand="b",
+                                        queue=q, overrides={})
+    assert item == "Sweater"
+    assert q.entries() == []
+
+
+def test_extract_item_or_queue_unmatched_queues_both_candidates():
+    # AC fixture: SS26/70%Wool 류 진짜 비값 → None + 큐
+    q = ReviewQueue()
+    item = fields.extract_item_or_queue("SS26 - Seasonal", "Mystery Object",
+                                        brand="lisayang", queue=q, overrides={})
+    assert item is None
+    raws = {e.raw_value for e in q.entries()}
+    assert raws == {"SS26 - Seasonal", "Mystery Object"}
+    assert all(e.field == "item" and e.brand == "lisayang" for e in q.entries())
+
+
+def test_extract_item_or_queue_override_resolves_without_requeue():
+    q = ReviewQueue()
+    overrides = {"ss26 - seasonal": IGNORE}
+    item = fields.extract_item_or_queue("SS26 - Seasonal", "The Alain Sweater",
+                                        brand="lisayang", queue=q, overrides=overrides)
+    assert item == "Sweater"  # product_type=IGNORE로 무시, title 키워드로 매칭
+    assert q.entries() == []  # 어느 쪽도 큐에 안 올라감(재질문 X)
+
+
+def test_extract_item_or_queue_learned_override_maps_directly():
+    q = ReviewQueue()
+    overrides = {"beret": "Hat"}
+    item = fields.extract_item_or_queue("Beret", "Beret", brand="b",
+                                        queue=q, overrides=overrides)
+    assert item == "Hat"
+    assert q.entries() == []
 
 
 def test_pick_structured_colors_handles_both_spellings():

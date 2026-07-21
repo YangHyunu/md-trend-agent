@@ -4,6 +4,7 @@ from datetime import date
 
 from poc import config
 from poc.analyze import AnalysisOutput
+from datalayer.review_queue import render_coverage_line
 
 RATIO_WARNING = ("> **주의:** NAVER ratio는 각 요청 결과의 최대값을 100으로 둔 상대값입니다. "
                  "서로 다른 요청의 값을 절대량처럼 비교할 수 없습니다.")
@@ -55,6 +56,9 @@ def _datalayer_section(aggregates: list[dict]) -> list[str]:
                      f"(최저 {p['min']}–최고 {p['max']}, n={p['n']}), 세일 {round(a['sale_ratio']*100)}%")
         L.append(f"- 컬러 top: {_fmt_counts(a['colors_top'])}")
         L.append(f"- 아이템: {_fmt_counts(a['items_top'])}")
+        badge = render_coverage_line(a.get("items_unmatched", 0), a["count"])
+        if badge:
+            L.append(badge)
         L.append(f"- 소재: {_fmt_counts(a['materials_top'])}")
         nw = a["newness"]
         L.append(f"- 신상(최근 {nw['weeks']}주): {nw['recent_count']}개, 최신 {nw['latest'] or '없음'}")
@@ -191,13 +195,14 @@ def _offline_check() -> None:
            "currency": "GBP", "price": {"min": 130.0, "max": 240.0, "p25": 150.0,
                                         "p50": 185.0, "p75": 220.0, "n": 2},
            "sale_ratio": 0.5, "colors_top": [("Camel", 2)], "items_top": [("Sweater", 2)],
-           "materials_top": [("cashmere", 2)],
+           "items_unmatched": 1, "materials_top": [("cashmere", 2)],
            "newness": {"weeks": 8, "recent_count": 1, "latest": "2026-07-01"}},
           {"brand": "Quince", "source": None, "count": 0, "failure": "지원 소스 없음"}]
     md = render_report(analysis, naver, crawl, ev, datalayer_aggregates=dl)
     assert "## 3-b" in md and "직수집" in md, "datalayer 섹션 누락"
     assert "Arch4 — shopify, 2개 상품" in md, "datalayer 성공 브랜드 렌더 실패"
     assert "가격(GBP): p25 150.0" in md, "가격밴드 렌더 실패"
+    assert "🔴 **아이템 확인 필요 1건**" in md, "커버리지 배지(≥20%) 렌더 실패 (MDA-7)"
     assert "Camel(2)" in md, "컬러 top 렌더 실패"
     assert "Quince: 지원 소스 없음" in md, "미수집 브랜드 기록 실패"
     assert render_report(analysis, naver, crawl, ev).find("## 3-b") == -1, "aggregates 없으면 섹션 미출력이어야"
