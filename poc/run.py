@@ -6,6 +6,7 @@ from poc import collect, config, naver, report
 from poc.analyze import run_analyst, run_researcher
 from datalayer.aggregate import brand_aggregate
 from datalayer.extract import extract_all
+from datalayer.metrics import append_history, collect_metrics
 
 
 def _dump(name: str, data) -> None:
@@ -40,6 +41,16 @@ def main() -> int:
     ok_dl = sum(1 for a in dl_aggregates if a.get("count"))
     total_prod = sum(a.get("count", 0) for a in dl_aggregates)
     print(f"  datalayer 성공 {ok_dl}/{len(dl_aggregates)}몰, 상품 {total_prod}개")
+
+    # 커버리지 스코어카드 (MDA-9): 검진표 dump + 히스토리 append
+    from datetime import datetime
+    metrics = collect_metrics(dl_aggregates)
+    _dump("metrics.json", metrics)
+    append_history(config.OUT_DIR / "metrics_history.jsonl", metrics,
+                   ts=datetime.now().isoformat(timespec="seconds"))
+    lows = {f: v["overall"] for f, v in metrics["fields"].items()}
+    print(f"  metrics: sources {metrics['sources']['ok']}/{metrics['sources']['total']}, "
+          f"coverage {lows}")
 
     print("[3/4] LLM 분석 (2패스)...")
     researcher = run_researcher(evidence, naver_result["signals"])
