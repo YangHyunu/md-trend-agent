@@ -52,6 +52,15 @@ def main() -> int:
     print(f"  metrics: sources {metrics['sources']['ok']}/{metrics['sources']['total']}, "
           f"coverage {lows}")
 
+    print("[2c] 스테디셀러 신호 (주1회 캐시)...")
+    from poc.steady import fetch_steady
+    try:
+        steady = fetch_steady(config.BRANDS, config.OUT_DIR / "steady_cache.json")
+    except Exception as e:  # 검색 실패해도 파이프라인 계속
+        print(f"  steady 실패: {type(e).__name__}: {e}", file=sys.stderr)
+        steady = {}
+    print(f"  steady 신호 {sum(1 for v in steady.values() if v.get('hits'))}브랜드")
+
     print("[3/4] LLM 분석 (2패스)...")
     researcher = run_researcher(evidence, naver_result["signals"])
     (config.OUT_DIR / "researcher.json").write_text(
@@ -64,7 +73,7 @@ def main() -> int:
 
     print("[4/4] 보고서 렌더링...")
     md = report.render_report(analysis, naver_result, crawl_results, evidence,
-                              datalayer_aggregates=dl_aggregates)
+                              datalayer_aggregates=dl_aggregates, steady=steady)
     (config.OUT_DIR / "report.md").write_text(md, encoding="utf-8")
     print(f"완료: {config.OUT_DIR / 'report.md'}")
     return 0

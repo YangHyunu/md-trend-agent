@@ -187,12 +187,15 @@ def _market_rollup_section(aggregates: list[dict]) -> list[str]:
     return L
 
 
-def _brand_signature_section(aggregates: list[dict]) -> list[str]:
-    """§4 브랜드 시그니처 — 브랜드당 한 줄 프로필(주력·지배축·가격·신상). 매트릭스 폐기."""
+def _brand_signature_section(aggregates: list[dict],
+                             steady: dict | None = None) -> list[str]:
+    """§4 브랜드 시그니처 — 브랜드당 한 줄 프로필(주력·지배축·가격·신상·스테디셀러)."""
+    steady = steady or {}
     ok = [a for a in aggregates if a.get("count")]
     failed = [a for a in aggregates if not a.get("count")]
     L = ["## 4. 브랜드 시그니처\n",
-         "> 브랜드당 한 줄 = 주력 아이템·지배 컬러/실루엣·가격 중앙값·신상. 전체 필드는 §7 부록.\n"]
+         "> 브랜드당 한 줄 = 주력 아이템·지배 컬러/실루엣·가격 중앙값·신상. 전체 필드는 §7 부록. "
+         "스테디셀러 = 웹 판매신호(커머스지·공식) — 주1회 수집.\n"]
     for a in ok:
         top_items = ", ".join(n for n, _ in (a.get("items_top") or [])[:2]) or "—"
         fam = (a.get("colors_family_top") or [["—"]])[0][0]
@@ -209,18 +212,31 @@ def _brand_signature_section(aggregates: list[dict]) -> list[str]:
             links = ", ".join(f"[{_cell(p.get('item') or '상품')} {p['published_at'][5:]}]({p['url']})"
                               for p in newest)
             line += f"\n  - 신상 출시: {links}"
+        hits = (steady.get(a["brand"]) or {}).get("hits") or []
+        if hits:
+            links = ", ".join(f"[{_cell(h['title'][:40])}]({h['url']}) ({h['authority']})"
+                              for h in hits)
+            line += f"\n  - 스테디셀러 신호: {links}"
         L.append(line)
     if failed:
         L.append("")
         L.append("**미수집(소스 미구현 갭):** "
                  + ", ".join(f"{a['brand']}({a.get('failure') or '0건'})" for a in failed))
+        # 실측은 없어도 웹 판매신호는 노출 — 미수집 브랜드에 대한 유일한 시그널
+        for a in failed:
+            hits = (steady.get(a["brand"]) or {}).get("hits") or []
+            if hits:
+                links = ", ".join(f"[{_cell(h['title'][:40])}]({h['url']}) ({h['authority']})"
+                                  for h in hits)
+                L.append(f"  - {_cell(a['brand'])} 스테디셀러 신호: {links}")
     L.append("")
     return L
 
 
 def render_report(analysis: AnalysisOutput, naver: dict,
                   crawl_results: list[dict], evidence: list[dict],
-                  datalayer_aggregates: list[dict] | None = None) -> str:
+                  datalayer_aggregates: list[dict] | None = None,
+                  steady: dict | None = None) -> str:
     L: list[str] = []
     a = config.ANALYSIS
     ev_urls = {e["id"]: e["url"] for e in evidence}  # E코드 → 출처 링크 (§8과 연결)
@@ -273,7 +289,7 @@ def render_report(analysis: AnalysisOutput, naver: dict,
     # MD 워크플로우 ②: 시장 실측 스냅샷(통계 요약) + 브랜드 시그니처
     if datalayer_aggregates:
         L.extend(_market_rollup_section(datalayer_aggregates))
-        L.extend(_brand_signature_section(datalayer_aggregates))
+        L.extend(_brand_signature_section(datalayer_aggregates, steady))
 
     # MD 워크플로우 ③: 국내 수요 — 한국서 먹히나 (데이터랩 정량 + 국내 웹 참고)
     L.append("## 5. 국내 수요 신호 (NAVER 데이터랩)\n")
@@ -385,7 +401,13 @@ def _offline_check() -> None:
            "newest": [{"url": "https://arch4.co.uk/p/x", "item": "Sweater",
                        "published_at": "2026-07-01"}]},
           {"brand": "Quince", "source": None, "count": 0, "failure": "지원 소스 없음"}]
-    md = render_report(analysis, naver, crawl, ev, datalayer_aggregates=dl)
+    steady = {"Arch4": {"fetched_at": "2026-07-21", "hits": [
+        {"url": "https://www.realsimple.com/arch4-x", "title": "This Best-Selling Arch4 Sweater",
+         "tier": 4, "authority": "커머스지"}]},
+        "Quince": {"fetched_at": "2026-07-21", "hits": [
+            {"url": "https://www.realsimple.com/quince-y", "title": "Best-Selling Quince Cashmere",
+             "tier": 4, "authority": "커머스지"}]}}
+    md = render_report(analysis, naver, crawl, ev, datalayer_aggregates=dl, steady=steady)
 
     # 섹션 순서 = MD 워크플로우 (요약→트렌드→시장실측→브랜드시그니처→국내→갭·액션→부록)
     order = ["## 1. 한 장 요약", "## 2. 트렌드", "## 3. 시장 실측 스냅샷",
@@ -412,6 +434,10 @@ def _offline_check() -> None:
     # §4 브랜드 시그니처: 한 줄 프로필
     assert "**Arch4** (2) — 주력 Sweater · 뉴트럴 지배 · Relaxed · 중앙 GBP185" in md, "시그니처 줄 실패"
     assert "신상 출시: [Sweater 07-01](https://arch4.co.uk/p/x)" in md, "신상 상품 링크 실패"
+    assert "스테디셀러 신호: [This Best-Selling Arch4 Sweater](https://www.realsimple.com/arch4-x) (커머스지)" \
+        in md, "스테디셀러 신호 렌더 실패"
+    assert "Quince 스테디셀러 신호: [Best-Selling Quince Cashmere]" in md, \
+        "미수집 브랜드 스테디셀러 신호 누락"
     assert "미수집(소스 미구현 갭):** Quince(지원 소스 없음)" in md, "미수집 브랜드 기록 실패"
 
     # §7 부록: 상세 실측 접기 + 확인대기 + 출처(권위) + 한계
