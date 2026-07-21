@@ -266,10 +266,12 @@ def render_report(analysis: AnalysisOutput, naver: dict,
     L.append("")
 
     L.append("## 8. 출처\n")
-    L.append("| ID | URL | 브랜드 | 수집일 |")
-    L.append("|---|---|---|---|")
+    L.append("> 권위 티어: T1 업계지 · T2 에디토리얼 = 트렌드 근거 / T3 공식몰 = 벤치마크 실측 / T4 저권위 = 참고만.\n")
+    L.append("| ID | 권위 | URL | 브랜드 | 수집일 |")
+    L.append("|---|---|---|---|---|")
     for e in evidence:
-        L.append(f"| {e['id']} | {e['url']} | {e.get('brand') or '-'} | {e['fetched_at'][:10]} |")
+        auth = e.get("authority") or ("T3 공식몰" if e.get("brand") else "T4 저권위")
+        L.append(f"| {e['id']} | {auth} | {e['url']} | {e.get('brand') or '-'} | {e['fetched_at'][:10]} |")
     L.append("")
     return "\n".join(L)
 

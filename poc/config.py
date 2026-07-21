@@ -68,6 +68,15 @@ TAVILY_QUERIES = [
     "cashmere knitwear silhouette trend",
 ]
 
+# 소스 권위 티어 (MDA-10). 트렌드 근거는 T1·T2만 인정 — T3=벤치마크(공식몰), T4=저권위(웹·블로그).
+# 국내 동향은 별도 축(NAVER datalab/API)에서만 근거로 취급, 웹 크롤 근거로는 T4.
+TIER1_DOMAINS = (  # 업계지 (trade)
+    "businessoffashion.com", "voguebusiness.com", "wwd.com",
+)
+TIER2_DOMAINS = (  # 에디토리얼
+    "vogue.com", "harpersbazaar.com", "elle.com", "graziamagazine.com", "grazia.co.uk",
+)
+
 # 분석 조건 (POC_SPEC §5 고정)
 ANALYSIS = {
     "category": "여성 니트웨어 (캐시미어 중심)",

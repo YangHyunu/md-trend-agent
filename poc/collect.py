@@ -112,18 +112,41 @@ def crawl_urls(urls: list[str]) -> list[dict]:
     return asyncio.run(_crawl_async(urls))
 
 
+def _domain_matches(host: str, domains) -> bool:
+    return any(host == d or host.endswith("." + d) for d in domains)
+
+
+def classify_authority(url: str, brand: str | None) -> tuple[int, str]:
+    """(tier, label) 반환. 트렌드 근거 인정은 T1·T2만 (MDA-10).
+
+    T1 업계지 > T2 에디토리얼 > T3 공식몰(벤치마크) > T4 저권위(웹·블로그).
+    브랜드몰(공식) 도 T1/T2 매체가 아니므로 트렌드 근거 아님 — 벤치마크 실측용.
+    """
+    host = urlparse(url).netloc.lower()
+    if _domain_matches(host, config.TIER1_DOMAINS):
+        return 1, "T1 업계지"
+    if _domain_matches(host, config.TIER2_DOMAINS):
+        return 2, "T2 에디토리얼"
+    if brand:
+        return 3, "T3 공식몰"
+    return 4, "T4 저권위"
+
+
 def build_evidence(crawl_results: list[dict]) -> list[dict]:
     evidence = []
     for r in crawl_results:
         if not r["ok"]:
             continue
         brand = _brand_for(r["url"])
+        tier, authority = classify_authority(r["url"], brand)
         evidence.append({
             "id": f"E{len(evidence) + 1:03d}",
             "url": r["url"],
             "excerpt": r["text"][:EXCERPT_CHARS],
             "brand": brand,
             "source_type": "official" if brand else "web",
+            "tier": tier,
+            "authority": authority,
             "fetched_at": r["fetched_at"],
         })
     return evidence
@@ -147,6 +170,12 @@ def _offline_check() -> None:
             {"url": "https://a.com", "ok": False, "text": "", "error": "e", "fetched_at": "t"}]
     ev = build_evidence(fake)
     assert len(ev) == 1 and ev[0]["id"] == "E001" and ev[0]["source_type"] == "official"
+    # 권위 티어 (MDA-10)
+    assert classify_authority("https://www.businessoffashion.com/x", None) == (1, "T1 업계지")
+    assert classify_authority("https://www.vogue.com/fashion/x", None)[0] == 2
+    assert classify_authority("https://www.quince.com/w", "Quince") == (3, "T3 공식몰")
+    assert classify_authority("https://m.blog.naver.com/foo/1", None) == (4, "T4 저권위")
+    assert ev[0]["tier"] == 3 and ev[0]["authority"] == "T3 공식몰"
     assert _is_banned("https://www.instagram.com/plushmere/reel/x")
     assert not _is_banned("https://www.quince.com/women")
     banned_sel = select_urls([{"url": "https://www.instagram.com/plushmere/p/1", "found_via": "q"}])
