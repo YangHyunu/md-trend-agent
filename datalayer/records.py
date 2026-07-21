@@ -15,6 +15,7 @@ class ProductRecord:
     materials: list[str]             # 소재 키워드
     published_at: str | None         # ISO 날짜 (YYYY-MM-DD)
     source: str                      # 성공한 rung (예 "shopify")
+    silhouettes: list[str] = field(default_factory=list)  # 핏/볼륨 (MDA-4 rung1)
 
 
 @dataclass

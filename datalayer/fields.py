@@ -37,6 +37,38 @@ def extract_materials(*texts: str) -> list[str]:
     return [m for m, pattern in _MATERIAL_PATTERNS if pattern.search(blob)]
 
 
+# 실루엣(핏/볼륨) 닫힌셋 — 실측 확정 (MDA-4). fit 계열만.
+# 배제: soft/light/classic(품질), ribbed/crew/cable(텍스처·넥라인), wide 단독(모호, wide-leg만).
+# 'slim fit'은 bare 'slim'에 접혀 별도 미포함(중복 카운트 방지).
+SILHOUETTE_KEYWORDS = [
+    "Oversized", "Relaxed", "Fitted", "Cropped", "Tailored", "Straight",
+    "Chunky", "Slouchy", "Flared", "Slim", "A-line", "Boxy", "Longline",
+    "Loose", "Draped", "Voluminous", "Structured", "Elongated", "Tapered",
+    "Balloon", "Column", "Cocoon", "Bodycon", "Form-fitting", "Wide-leg",
+    "Regular fit", "Easy fit", "Roomy", "Generous", "Compact",
+]
+_SIL_PATTERNS = [
+    (kw, re.compile(r"(?<![a-z])" + re.escape(kw.lower()) + r"(?![a-z])"))
+    for kw in SILHOUETTE_KEYWORDS
+]
+
+
+def extract_silhouettes(title: str, tags: list[str], body: str) -> list[str]:
+    """title/tags/body_html에서 닫힌 실루엣셋을 단어경계로 스캔 (MDA-4 rung1, LLM無).
+
+    다중값 — 한 상품에 여러 fit 가능. 등장 순서대로 canonical 리스트, 중복제거.
+    미매칭·애매어(wide 단독 등)는 여기서 안 잡고 rung2(MDA-7 큐) 몫.
+    """
+    blob = " ".join(filter(None, [title, " ".join(tags) if tags else "", body])).lower()
+    hits = []
+    for kw, pattern in _SIL_PATTERNS:
+        m = pattern.search(blob)
+        if m:
+            hits.append((m.start(), kw))
+    hits.sort()
+    return [kw for _, kw in hits]
+
+
 # 닫힌 아이템 집합 (canonical ← 동의어 소문자). 색 8계열과 동일 패턴 (MDA-3).
 # 'knit'는 기법/형용사라 노이즈(예: "Knit Cashmere Tee") → 동의어에서 제외.
 ITEM_SYNONYMS: dict[str, list[str]] = {

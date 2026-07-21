@@ -65,6 +65,7 @@ def _map(p: dict, brand: str, currency: str | None, origin: str,
         materials=fields.extract_materials(title, " ".join(tags), body),
         published_at=(p.get("published_at") or "")[:10] or None,
         source="shopify",
+        silhouettes=fields.extract_silhouettes(title, tags, body),
     )
 
 

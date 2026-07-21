@@ -46,6 +46,9 @@ def brand_aggregate(result: BrandExtractionResult, *, as_of: date | None = None,
     agg["items_top"] = Counter(p.item for p in prods if p.item).most_common(top_n)
     agg["items_unmatched"] = sum(1 for p in prods if not p.item)
     agg["materials_top"] = Counter(m for p in prods for m in p.materials).most_common(top_n)
+    agg["silhouettes_top"] = Counter(
+        s for p in prods for s in p.silhouettes).most_common(top_n)
+    agg["silhouettes_unmatched"] = sum(1 for p in prods if not p.silhouettes)
 
     cutoff = (as_of - timedelta(weeks=newness_weeks)).isoformat()
     dated = [p.published_at for p in prods if p.published_at]

@@ -60,6 +60,12 @@ def _datalayer_section(aggregates: list[dict]) -> list[str]:
         if badge:
             L.append(badge)
         L.append(f"- 소재: {_fmt_counts(a['materials_top'])}")
+        if a.get("silhouettes_top"):
+            L.append(f"- 실루엣: {_fmt_counts(a['silhouettes_top'])}")
+        sil_badge = render_coverage_line(a.get("silhouettes_unmatched", 0), a["count"],
+                                         label="실루엣")
+        if sil_badge:
+            L.append(sil_badge)
         nw = a["newness"]
         L.append(f"- 신상(최근 {nw['weeks']}주): {nw['recent_count']}개, 최신 {nw['latest'] or '없음'}")
         L.append("")
