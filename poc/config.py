@@ -73,8 +73,9 @@ TAVILY_QUERIES = [
 TIER1_DOMAINS = (  # 업계지 (trade)
     "businessoffashion.com", "voguebusiness.com", "wwd.com",
 )
-TIER2_DOMAINS = (  # 에디토리얼
-    "vogue.com", "harpersbazaar.com", "elle.com", "graziamagazine.com", "grazia.co.uk",
+TIER2_DOMAINS = (  # 에디토리얼 (ccTLD 변종 포함 — 실측서 vogue.co.uk/graziadaily.co.uk 발견)
+    "vogue.com", "vogue.co.uk", "harpersbazaar.com", "harpersbazaar.co.uk",
+    "elle.com", "graziamagazine.com", "grazia.co.uk", "graziadaily.co.uk",
 )
 
 # 분석 조건 (POC_SPEC §5 고정)
