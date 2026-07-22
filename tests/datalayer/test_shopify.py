@@ -5,7 +5,7 @@ from tests.datalayer.fixtures import shopify_client, non_shopify_client
 def test_shopify_fetch_maps_products():
     with shopify_client() as c:
         recs = ShopifySource().fetch("arch4", "https://shop.test/", c)
-    assert recs is not None and len(recs) == 2
+    assert recs is not None and len(recs) == 3
     cardigan = recs[0]
     assert cardigan.item == "Cardigan"
     assert cardigan.colors_raw == ["Camel", "Grey"]      # Colour 스펠링 인식
@@ -33,6 +33,20 @@ def test_shopify_color_llm_fallback_verified_against_body():
         recs = ShopifySource(llm_fn=lambda p: "navy, pink").fetch("b", "https://shop.test/", c)
     scarf = recs[1]
     assert scarf.colors_raw == ["navy"]
+
+
+def test_shopify_preserves_all_variants_and_derives_metrics():
+    # 멀티 variant 상품: 첫 variant만 쓰지 않고 min/max·세일비율·재고를 집계(§8.4)
+    with shopify_client() as c:
+        recs = ShopifySource().fetch("b", "https://shop.test/", c)
+    jumper = recs[2]
+    assert [v.variant_id for v in jumper.variants] == ["301", "302", "303"]
+    assert jumper.price_min_native == 300.0 and jumper.price_max_native == 340.0
+    assert jumper.price_native == 300.0                    # 대표가 = 최소가
+    assert jumper.on_sale is True                          # 302가 세일
+    assert jumper.sale_variant_ratio == round(1 / 3, 4)    # 3개 중 1개
+    assert jumper.any_available is True and jumper.all_sold_out is False
+    assert jumper.canonical_url == "https://shop.test/products/ribbed-jumper"
 
 
 def test_shopify_returns_none_for_non_shopify():

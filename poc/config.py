@@ -22,20 +22,27 @@ class Brand:
     auto_collect: bool = True
 
 
-# SPEC.md §10 cashmere-reference seed data 그대로. 값 임의 변경 금지.
+# SPEC_V2 §9.1 cashmere-reference target 11개. §9.2: Le Cashmere 제외(정확한 활성
+# 상품 소스 미확보 — Brand.md 확인). PLUSH'MERE는 Instagram 대신 코오롱몰 target으로 이동.
 BRANDS: list[Brand] = [
     Brand("guestinresidence", "https://guestinresidence.com/", "공식몰", "Young & Trendy 캐시미어 디자인"),
     Brand("Extreme cashmere", "https://extreme-cashmere.com/", "공식몰", "컬러 조합"),
     Brand("&Daughter", "https://www.and-daughter.com/", "공식몰", "룩북, 브랜드 컨셉, 브루클린 감성"),
     Brand("Lisa Yang", "https://us.lisa-yang.com/", "공식몰", "아시아 고객 선호 가능 디자인"),
     Brand("Arch4", "https://www.arch4.co.uk/", "공식몰", "베이직과 차별화된 디테일"),
-    Brand("Le Cashmere", "https://www.kolonmall.com/Brands/LECASHMERE", "유통몰", "룩북 컬러 조합"),
     Brand("Iris Von Arnim", "https://irisvonarnim.com/us/", "공식몰", "Brushed Cashmere 라인"),
     Brand("LE17 SEPTEMBRE", "https://en.le17septembre.com/", "공식몰", "베이직과 차별화된 디테일"),
     Brand("Quince", "https://www.quince.com/women/cashmere", "공식몰", "소재와 기본 아이템 구성"),
     Brand("cashmereinlove", "https://www.cashmereinlove.com/", "공식몰", "브라렛, 레깅스 등 독특한 아이템"),
     Brand("COS", "https://www.cos.com/en-us/women/knitwear", "공식몰", "다양한 니트웨어 아이디어"),
-    Brand("PLUSH'MERE", "https://www.instagram.com/plushmere/?hl=en", "Instagram", "Colorblock 스타일", auto_collect=False),
+    Brand("PLUSH'MERE", "https://www.kolonmall.com/Brands/PLUSHMERE", "코오롱몰", "Colorblock 스타일"),
+]
+
+# §9.2 제외 브랜드 — 상품 분석 target 아님. NAVER 수요 축(BRAND_KEYWORD_GROUPS)에서는
+# 별도 신호로 유지.
+EXCLUDED_BRANDS: list[Brand] = [
+    Brand("Le Cashmere", "https://www.kolonmall.com/Brands/LECASHMERE", "유통몰",
+          "정확한 활성 상품 소스 미확보(§9.2)", auto_collect=False),
 ]
 
 # --- NAVER 연령 코드 (SPEC.md DataLab Client 절. 두 API 코드 체계 혼용 금지) ---

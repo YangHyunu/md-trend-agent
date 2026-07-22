@@ -6,7 +6,7 @@ def test_extract_brand_via_shopify():
     with shopify_client() as c:
         res = extract.extract_brand("arch4", "https://shop.test/", client=c)
     assert res.source == "shopify"
-    assert len(res.products) == 2
+    assert len(res.products) == 3
     assert res.failure is None
 
 

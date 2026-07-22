@@ -7,7 +7,8 @@ _PRODUCTS = [
         "product_type": "Cardigan", "tags": ["knit", "cashmere"],
         "body_html": "<p>100% Cashmere</p>", "published_at": "2026-06-15T00:00:00Z",
         "options": [{"name": "Colour", "values": ["Camel", "Grey"]}],
-        "variants": [{"price": "240.00", "compare_at_price": "625.00"}],
+        "variants": [{"id": 111, "price": "240.00", "compare_at_price": "625.00",
+                      "available": True}],
         "images": [{"src": "https://cdn.shop.test/camel-cardigan-1.jpg"},
                    {"src": "https://cdn.shop.test/camel-cardigan-2.jpg"}],
     },
@@ -16,7 +17,19 @@ _PRODUCTS = [
         "product_type": "", "tags": ["accessory"],
         "body_html": "<p>Merino wool, navy</p>", "published_at": "2026-05-01T00:00:00Z",
         "options": [{"name": "Title", "values": ["Default"]}],
-        "variants": [{"price": "95.00", "compare_at_price": None}],
+        "variants": [{"id": 222, "price": "95.00", "compare_at_price": None,
+                      "available": False}],
+    },
+    {  # 멀티 variant: min/max·부분 세일·부분 품절 (§8.4 검증용)
+        "handle": "ribbed-jumper", "title": "Ribbed Wool Jumper",
+        "product_type": "Jumper", "tags": ["knit", "wool"],
+        "body_html": "<p>Merino wool</p>", "published_at": "2026-07-01T00:00:00Z",
+        "options": [{"name": "Size", "values": ["S", "M", "L"]}],
+        "variants": [
+            {"id": 301, "price": "300.00", "compare_at_price": "300.00", "available": True},
+            {"id": 302, "price": "320.00", "compare_at_price": "400.00", "available": True},
+            {"id": 303, "price": "340.00", "compare_at_price": None, "available": False},
+        ],
     },
 ]
 

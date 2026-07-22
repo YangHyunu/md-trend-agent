@@ -5,7 +5,9 @@ import httpx
 
 from datalayer import fields
 from datalayer.fields import LLMFn
-from datalayer.records import ProductRecord
+from datalayer.records import (
+    ProductRecord, Variant, canonical_url, derive_variant_metrics,
+)
 
 MAX_PAGES = 40  # 250*40=10000 상품 안전상한 (초과 시 조용히 잘림 방지용 캡)
 
@@ -43,10 +45,28 @@ def _normalize_tags(tags) -> list[str]:
     return [str(t).strip() for t in (tags or []) if str(t).strip()]
 
 
+def _build_variants(raw_variants: list[dict], handle: str) -> list[Variant]:
+    """모든 variant 보존(§10.1). id가 없으면 handle+index로 안정 대체."""
+    out: list[Variant] = []
+    for i, rv in enumerate(raw_variants):
+        price, compare, _ = fields.extract_price(rv)
+        vid = rv.get("id")
+        variant_id = str(vid) if vid not in (None, "") else f"{handle}-{i}"
+        out.append(Variant(
+            variant_id=variant_id,
+            title=rv.get("title") or None,
+            price_native=price,
+            compare_at_native=compare,
+            available=rv.get("available") if isinstance(rv.get("available"), bool) else None,
+        ))
+    return out
+
+
 def _map(p: dict, brand: str, currency: str | None, origin: str,
          llm_fn: LLMFn | None) -> ProductRecord:
-    variants = p.get("variants") or [{}]
-    price, compare, on_sale = fields.extract_price(variants[0])
+    handle = p.get("handle", "") or ""
+    variants = _build_variants(p.get("variants") or [], handle)
+    metrics = derive_variant_metrics(variants)
     title = p.get("title", "") or ""
     tags = _normalize_tags(p.get("tags"))
     body = p.get("body_html", "") or ""
@@ -54,28 +74,41 @@ def _map(p: dict, brand: str, currency: str | None, origin: str,
     raw_blob = " ".join([title, " ".join(tags), body,
                          " ".join(str(o) for o in options)])
     colors_raw = fields.extract_colors(options, title, tags, raw_blob,
-                                       handle=p.get("handle"), llm_fn=llm_fn)
+                                       handle=handle, llm_fn=llm_fn)
     families: list[str] = []
     for c in colors_raw:
         fam = fields.map_color_family(c)
         if fam and fam not in families:
             families.append(fam)
-    return ProductRecord(
+    # 대표 variant = 최소가 variant (없으면 첫 variant). 하위호환 price_native/compare용.
+    priced = [v for v in variants if v.price_native is not None]
+    rep = min(priced, key=lambda v: v.price_native) if priced else (variants[0] if variants else None)
+    url = f"{origin}/products/{handle}"
+    rec = ProductRecord(
         brand=brand,
-        url=f"{origin}/products/{p.get('handle', '')}",
+        url=url,
         item=fields.extract_item(p.get("product_type"), title),
         colors_raw=colors_raw,
         colors_family=families,
-        price_native=price,
+        price_native=metrics["price_min_native"],
         currency=currency,
-        compare_at_native=compare,
-        on_sale=on_sale,
+        compare_at_native=rep.compare_at_native if rep else None,
+        on_sale=metrics["any_variant_on_sale"],
         materials=fields.extract_materials(title, " ".join(tags), body),
         published_at=(p.get("published_at") or "")[:10] or None,
         source="shopify",
         silhouettes=fields.extract_silhouettes(title, tags, body),
         image_url=((p.get("images") or [{}])[0].get("src") or None),
+        canonical_url=canonical_url(url),
+        variants=variants,
+        price_min_native=metrics["price_min_native"],
+        price_max_native=metrics["price_max_native"],
+        sale_variant_ratio=metrics["sale_variant_ratio"],
+        any_available=metrics["any_available"],
+        all_sold_out=metrics["all_sold_out"],
     )
+    rec.validate()
+    return rec
 
 
 class ShopifySource:
