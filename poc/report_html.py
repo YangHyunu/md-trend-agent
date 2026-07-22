@@ -17,6 +17,25 @@ FAM_COLOR = {  # 8계열 시맨틱 스와치
 }
 E = lambda s: _html.escape(str(s))
 
+PUB_NAMES = {  # 도메인 → 매체명 (링크 라벨. 미등록 도메인은 host 표기)
+    "businessoffashion.com": "BoF", "voguebusiness.com": "Vogue Business", "wwd.com": "WWD",
+    "vogue.com": "Vogue", "vogue.co.uk": "Vogue UK",
+    "harpersbazaar.com": "Harper's Bazaar", "harpersbazaar.co.uk": "Harper's Bazaar UK",
+    "elle.com": "Elle", "graziamagazine.com": "Grazia", "grazia.co.uk": "Grazia UK",
+    "graziadaily.co.uk": "Grazia UK", "realsimple.com": "Real Simple", "instyle.com": "InStyle",
+    "whowhatwear.com": "Who What Wear", "refinery29.com": "Refinery29",
+    "glamour.com": "Glamour", "marieclaire.com": "Marie Claire",
+}
+
+
+def _pubname(url: str) -> str:
+    from urllib.parse import urlparse
+    host = urlparse(url).netloc.lower().removeprefix("www.")
+    for d, name in PUB_NAMES.items():
+        if host == d or host.endswith("." + d):
+            return name
+    return host
+
 
 def render_html(analysis, naver: dict, crawl_results: list[dict], evidence: list[dict],
                 datalayer_aggregates: list[dict] | None = None,
@@ -27,6 +46,7 @@ def render_html(analysis, naver: dict, crawl_results: list[dict], evidence: list
     steady = steady or {}
     ev_urls = {e["id"]: e["url"] for e in evidence}
     ev_auth = {e["id"]: e.get("authority", "T4 저권위") for e in evidence}
+    ev_title = {e["id"]: e.get("title") for e in evidence}
 
     backed = [t for t in analysis.trends if t.evidence_ids]
     demoted = [t for t in analysis.trends if not t.evidence_ids]
@@ -41,10 +61,6 @@ def render_html(analysis, naver: dict, crawl_results: list[dict], evidence: list
             for n, cnt in (a.get(key) or []):
                 c[n] += cnt
         return c.most_common()
-
-
-    def cross(t):
-        return report._trend_crosscheck(f"{t.name} {t.rationale}", dl).replace("  - 실측 대조: ", "")
 
 
     def bars(pairs, topn=8, swatch=False):
@@ -62,9 +78,15 @@ def render_html(analysis, naver: dict, crawl_results: list[dict], evidence: list
 
 
     def evlink(ids):
-        return " ".join(
-            f'<a class="ev" href="{E(ev_urls.get(i, "#"))}" target="_blank" rel="noopener">'
-            f'{E(i)} <em>{E(ev_auth.get(i, ""))}</em></a>' for i in ids)
+        out = []
+        for i in ids:
+            url = ev_urls.get(i, "#")
+            tier = ev_auth.get(i, "").split()[0]  # "T2 에디토리얼" → "T2"
+            tip = f'{i} · {ev_title.get(i) or url}'  # E-id 유지 — 부록 출처 테이블 추적용
+            out.append(
+                f'<a class="ev" href="{E(url)}" target="_blank" rel="noopener" title="{E(tip)}">'
+                f'{E(_pubname(url))} <em>{E(tier)}</em></a>')
+        return " ".join(out)
 
 
     # ── §2 트렌드 ──
@@ -75,16 +97,20 @@ def render_html(analysis, naver: dict, crawl_results: list[dict], evidence: list
             continue
         trend_html.append(f'<h3 class="phase phase-{phase}">{E(phase)}</h3>')
         for t in items:
-            ev_imgs = [e for e in evidence
-                       if e["id"] in t.evidence_ids and e.get("image")][:2]
-            img_html = "".join(
-                f'<a href="{E(e["url"])}" target="_blank" rel="noopener" class="thumb">'
-                f'<img src="{E(e["image"])}" alt="{E(e["id"])}" loading="lazy"></a>' for e in ev_imgs)
+            hero = next((e for e in evidence
+                         if e["id"] in t.evidence_ids and e.get("image")), None)
+            img_html = ""
+            if hero:
+                cap = (hero.get("title") or "")[:70]
+                img_html = (
+                    f'<a href="{E(hero["url"])}" target="_blank" rel="noopener" class="hero" '
+                    f'title="{E(hero.get("title") or hero["url"])}">'
+                    f'<img src="{E(hero["image"])}" alt="{E(hero.get("title") or hero["id"])}" loading="lazy">'
+                    f'<span class="hero-cap">{E(cap)} — {E(_pubname(hero["url"]))}</span></a>')
             trend_html.append(f'''<div class="trend">
               <div class="trend-head"><b>{E(t.name)}</b> {evlink(t.evidence_ids)}</div>
               <p>{E(t.rationale)}</p>
-              {f'<div class="thumbs">{img_html}</div>' if img_html else ''}
-              <div class="xcheck"><span class="xtag">실측 대조</span>{E(cross(t))}</div></div>''')
+              {img_html}</div>''')
     trend_block = "\n".join(trend_html) or '<p class="muted">권위 근거(T1·T2) 트렌드 0건 — §3 실측으로 판단.</p>'
 
     # ── §3 가격 사다리 ──
@@ -141,7 +167,6 @@ def render_html(analysis, naver: dict, crawl_results: list[dict], evidence: list
             <span class="{stale}"><span class="k">최근8주</span> {nw['recent_count']}신상</span>
           </div>{new_html}</div>''')
     cards_html = "\n".join(cards)
-    failed_html = " · ".join(E(a['brand']) for a in failed)
     failed_steady = []
     for a in failed:  # 미수집 브랜드도 웹 판매신호는 노출
         for h in (steady.get(a["brand"]) or {}).get("hits") or []:
@@ -152,18 +177,61 @@ def render_html(analysis, naver: dict, crawl_results: list[dict], evidence: list
     failed_steady_html = "\n".join(failed_steady)
 
     # ── §5 NAVER ──
-    naver_html = []
-    for s in naver.get("signals", []):
-        ser = s["series"]
-        if not ser:
-            continue
-        latest, peak = ser[-1], max(ser, key=lambda d: d["ratio"])
-        naver_html.append(f'<li><b>{E(s["group"])}</b> ({E(s["observed_segment"])}세) — '
-                          f'최근 {E(latest["period"])} ratio {latest["ratio"]}, 최고 {peak["ratio"]}</li>')
-    naver_block = "".join(naver_html) or '<li class="muted">NAVER 신호 없음</li>'
+    def spark(ser, w=150, h=34):
+        """주간 series → 인라인 SVG 스파크라인 (행당 단일 시리즈 — accent 단색, 범례 불요)."""
+        vals = [d["ratio"] for d in ser]
+        mx = max(vals) or 1
+        n = len(vals)
+        pts = [((i * w / (n - 1)) if n > 1 else 0.0,
+                h - 3 - (v / mx) * (h - 6)) for i, v in enumerate(vals)]
+        poly = " ".join(f"{x:.1f},{y:.1f}" for x, y in pts)
+        px, py = pts[vals.index(max(vals))]  # mx는 0-division 방지용 합성값일 수 있음 — 실제 최대 인덱스 사용
+        ex, ey = pts[-1]
+        rng = f'{ser[0]["period"]} ~ {ser[-1]["period"]}'
+        return (f'<svg class="spark" width="{w}" height="{h}" viewBox="0 0 {w} {h}" '
+                f'role="img" aria-label="주간 검색 추이 {E(rng)}">'
+                f'<polyline points="{poly}" fill="none" stroke="var(--accent)" '
+                f'stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>'
+                f'<circle cx="{px:.1f}" cy="{py:.1f}" r="3" fill="none" stroke="var(--accent)" stroke-width="1.5"/>'
+                f'<circle cx="{ex:.1f}" cy="{ey:.1f}" r="3" fill="var(--accent)"/></svg>')
+
+    def sig_rows(sigs, extra=None):
+        rows = []
+        for s in sigs:
+            ser = s["series"]
+            if not ser:
+                continue
+            latest = ser[-1]["ratio"]
+            peak = max(d["ratio"] for d in ser)
+            sub = (extra or {}).get(s["group"], "")
+            rows.append(f'''<div class="sigrow">
+              <span class="sig-label"><b>{E(s["group"])}</b> <span class="sig-age">{E(s["observed_segment"])}세</span>
+                {f'<span class="sig-sub">{E(sub)}</span>' if sub else ''}</span>
+              {spark(ser)}
+              <span class="sig-num">최근 {round(latest, 1)} · 최고 {round(peak, 1)}</span></div>''')
+        return "\n".join(rows)
+
+    def no_data_note(sigs):
+        missing = [s["group"] for s in sigs if not s["series"]]
+        return (f'<p class="note">검색량 미검출: {E(", ".join(missing))}</p>' if missing else "")
+
+    all_sigs = naver.get("signals", [])
+    by_src = lambda *srcs: [s for s in all_sigs if s["source"] in srcs]
+    cat_block = sig_rows(by_src("search_trend", "shopping_category", "shopping_keyword"))
+    item_block = sig_rows(by_src("item_search_trend"))
+    sig_by_brand = {}  # 브랜드 수요 행에 실측 시그니처(주력·컬러) 병기 — §4와 조인
+    for a in ok:
+        top = ", ".join(n for n, _ in (a.get("items_top") or [])[:2])
+        fam = (a.get("colors_family_top") or [["—"]])[0][0]
+        sig_by_brand[a["brand"].lower()] = f"주력 {top} · {fam}" if top else ""
+    brand_extra = {s["group"]: sig_by_brand.get(s["group"].lower(), "")
+                   for s in by_src("brand_search_trend")}
+    brand_block = sig_rows(by_src("brand_search_trend"), extra=brand_extra)
     domestic = [e for e in evidence if report._is_domestic_blog(e.get("url", ""))]
-    dom_html = "".join(f'<li><a href="{E(e["url"])}" target="_blank" rel="noopener">{E(e["id"])}</a></li>'
-                       for e in domestic)
+    dom_html = "".join(
+        f'<li><a href="{E(e["url"])}" target="_blank" rel="noopener">'
+        f'{E((e.get("title") or "")[:52] or _pubname(e["url"]))}</a> '
+        f'<span class="nd">{E(_pubname(e["url"]))}</span></li>' for e in domestic)
 
     # ── §6 갭·액션 ──
     gaps_html = "".join(f"<li>{E(g)}</li>" for g in analysis.gaps)
@@ -175,8 +243,7 @@ def render_html(analysis, naver: dict, crawl_results: list[dict], evidence: list
     for t in demoted:
         demo_html.append(f'''<div class="trend demo">
           <div class="trend-head">[{E(t.phase)}] <b>{E(t.name)}</b></div>
-          <p>{E(t.rationale)}</p>
-          <div class="xcheck"><span class="xtag">실측 대조</span>{E(cross(t))}</div></div>''')
+          <p>{E(t.rationale)}</p></div>''')
     demo_block = "\n".join(demo_html)
 
     detail_rows = []
@@ -193,7 +260,9 @@ def render_html(analysis, naver: dict, crawl_results: list[dict], evidence: list
 
     src_rows = "\n".join(
         f'<tr class="tier{e.get("tier",4)}"><td>{E(e["id"])}</td><td>{E(e.get("authority","T4 저권위"))}</td>'
-        f'<td><a href="{E(e["url"])}" target="_blank" rel="noopener">{E(e["url"][:60])}</a></td>'
+        f'<td><a href="{E(e["url"])}" target="_blank" rel="noopener" title="{E(e["url"])}">'
+        f'{E((e.get("title") or "")[:56] or e["url"][:56])}</a></td>'
+        f'<td>{E(_pubname(e["url"]))}</td>'
         f'<td>{E(e.get("brand") or "—")}</td></tr>' for e in evidence)
 
     tier_counts = Counter(e.get("authority", "T4 저권위") for e in evidence)
@@ -281,7 +350,11 @@ def render_html(analysis, naver: dict, crawl_results: list[dict], evidence: list
     .newest {{ margin-top:10px; padding-top:9px; border-top:1px solid var(--line); font-size:12px; }}
     .thumbs {{ display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; }}
     .thumb {{ display:block; width:72px; text-decoration:none; }}
-    .trend .thumb {{ width:120px; }}
+    .hero {{ display:block; max-width:340px; margin-top:10px; text-decoration:none; }}
+    .hero img {{ width:100%; aspect-ratio:16/10; object-fit:cover; border-radius:4px;
+      border:1px solid var(--line); display:block; }}
+    .hero-cap {{ display:block; font-family:var(--mono); font-size:10.5px; color:var(--muted);
+      margin-top:5px; line-height:1.4; }}
     .thumb img {{ width:100%; aspect-ratio:3/4; object-fit:cover; border-radius:3px;
       border:1px solid var(--line); display:block; }}
     .th-cap {{ display:block; font-family:var(--mono); font-size:9.5px; color:var(--muted);
@@ -302,9 +375,6 @@ def render_html(analysis, naver: dict, crawl_results: list[dict], evidence: list
     .ev {{ font-family:var(--mono); font-size:10.5px; text-decoration:none; color:var(--accent);
       border:1px solid var(--accent-soft); padding:1px 5px; border-radius:3px; margin-left:4px; white-space:nowrap; }}
     .ev em {{ font-style:normal; color:var(--muted); }}
-    .xcheck {{ font-size:12px; color:var(--muted); background:var(--accent-soft); padding:8px 12px; border-radius:4px; }}
-    .xtag {{ font-family:var(--mono); font-size:9.5px; text-transform:uppercase; letter-spacing:.1em;
-      color:var(--accent); margin-right:8px; }}
     /* lists */
     ul {{ padding-left:0; list-style:none; margin:0; }}
     .gaps li, .naver li {{ padding:6px 0 6px 18px; position:relative; font-size:13.5px; border-bottom:1px solid var(--line); }}
@@ -315,6 +385,16 @@ def render_html(analysis, naver: dict, crawl_results: list[dict], evidence: list
       background:var(--accent); color:#fff; width:19px; height:19px; border-radius:50%; text-align:center;
       font-size:11px; line-height:19px; }}
     .muted {{ color:var(--muted); }}
+    /* §5 spark rows */
+    .sigrow {{ display:grid; grid-template-columns:1fr 150px 160px; gap:14px; align-items:center;
+      padding:8px 0; border-bottom:1px solid var(--line); }}
+    .sig-label b {{ font-size:13.5px; }}
+    .sig-sub {{ display:block; font-size:11.5px; color:var(--muted); margin-top:1px; }}
+    .sig-age {{ font-family:var(--mono); font-size:10px; color:var(--muted); }}
+    .sig-num {{ font-family:var(--mono); font-size:11.5px; color:var(--muted); text-align:right;
+      font-variant-numeric:tabular-nums; }}
+    .spark {{ display:block; }}
+    @media (max-width:560px) {{ .sigrow {{ grid-template-columns:1fr 120px; }} .sig-num {{ display:none; }} }}
     .dom {{ margin-top:14px; font-size:12.5px; }}
     .dom-label {{ font-family:var(--mono); font-size:10.5px; text-transform:uppercase; letter-spacing:.08em; color:var(--warn); }}
     .dom a {{ color:var(--muted); }}
@@ -348,20 +428,20 @@ def render_html(analysis, naver: dict, crawl_results: list[dict], evidence: list
     <section>
       <h2 data-n="01">한 장 요약</h2>
       <div class="summary">
-        <div class="row"><span class="tag">뜨는 것</span><span>{('[' + backed[0].phase + '] ' + E(backed[0].name)) if backed else '권위 근거 트렌드 없음 — 시장 실측으로 판단'}</span></div>
+        <div class="row"><span class="tag">핵심 트렌드</span><span>{('[' + backed[0].phase + '] ' + E(backed[0].name)) if backed else '권위 매체 보도 기반 트렌드 없음'}</span></div>
         {"".join(f'<div class="row"><span class="tag">MD 액션</span><span>{E(a.recommendation)}</span></div>' for a in analysis.actions[:3])}
       </div>
     </section>
 
     <section>
       <h2 data-n="02">트렌드 · 권위 근거 T1·T2</h2>
-      <p class="note">업계지·에디토리얼 근거가 있는 트렌드만. 근거 없는 관찰은 부록. 각 트렌드 아래 <b>실측 대조</b> = 벤치마크 몰의 실제 노출(코드 조인).</p>
+      <p class="note">업계지(T1)·에디토리얼(T2) 보도를 근거로 묶은 시즌 테마. 보도 근거가 없는 관찰은 부록에 있다.</p>
       {trend_block}
     </section>
 
     <section>
       <h2 data-n="03">시장 실측 스냅샷</h2>
-      <p class="lead">시장은 <b>{E(top_item)}</b> 중심, <b>{E(top_fam)}</b> 컬러와 <b>{E(top_sil)}</b> 실루엣이 지배하고 소재는 <b>{E(top_mat)}</b>가 압도한다.</p>
+      <p class="lead">실측 {total:,}개 상품 최다 — 아이템 <b>{E(top_item)}</b> · 컬러 <b>{E(top_fam)}</b> · 실루엣 <b>{E(top_sil)}</b> · 소재 <b>{E(top_mat)}</b>.</p>
       <div class="grp">아이템</div><div class="bars">{bars(roll("items_top"))}</div>
       <div class="grp">컬러 계열</div><div class="bars">{bars(roll("colors_family_top"), swatch=True)}</div>
       <div class="grp">실루엣</div><div class="bars">{bars(roll("silhouettes_top"))}</div>
@@ -372,17 +452,20 @@ def render_html(analysis, naver: dict, crawl_results: list[dict], evidence: list
 
     <section>
       <h2 data-n="04">브랜드 시그니처</h2>
-      <p class="note">브랜드당 한 줄 — 주력·지배축·가격·신상. 세일률 <span class="flag-hot">20%↑</span>=재고압박 신호, 신상 0=업데이트 정체.</p>
+      <p class="note">브랜드별 주력 아이템·컬러·가격·신상 흐름. 세일률 <span class="flag-hot">20% 이상</span>은 재고 압박, 최근 8주 신상 0은 업데이트 정체로 읽는다.</p>
       <div class="cards">{cards_html}</div>
-      <p class="missing"><b>미수집</b> (소스 미구현 갭): {failed_html}</p>
       {f'<div class="missing">{failed_steady_html}</div>' if failed_steady_html else ''}
     </section>
 
     <section>
       <h2 data-n="05">국내 수요 · NAVER 데이터랩</h2>
-      <p class="note">ratio는 요청별 최대=100 상대값. 25~39세를 정확히 못 잡아 20~39세(coverage mismatch).</p>
-      <ul class="naver">{naver_block}</ul>
-      <div class="dom"><span class="dom-label">국내 웹 참고 — 판단 근거 아님</span>
+      <p class="note">ratio는 요청별 최대=100 상대값(요청 간 절대 비교 금지). 스파크라인 = 최근 8주 주간 추이,
+        ○=최고점 ●=최근. 검색 수요는 일부 20~39세(coverage mismatch).</p>
+      <div class="grp">카테고리 수요</div>
+      {cat_block or '<p class="muted">NAVER 신호 없음</p>'}
+      {f'<div class="grp">아이템 수요 · 시그니처/유사 상품</div>{item_block}' if item_block else ''}
+      {f'<div class="grp">벤치마크 브랜드 검색 수요 <span class="muted">— 실측 시그니처 병기</span></div>{brand_block}{no_data_note(by_src("brand_search_trend"))}' if brand_block else ''}
+      <div class="dom"><span class="dom-label">국내 블로그·커뮤니티 (참고용)</span>
         <ul class="dom">{dom_html}</ul></div>
     </section>
 
@@ -394,8 +477,8 @@ def render_html(analysis, naver: dict, crawl_results: list[dict], evidence: list
 
     <section>
       <h2 data-n="07">부록</h2>
-      <div class="grp">미검증 관찰 · 권위 근거 없음</div>
-      <p class="note">권위 매체(T1·T2) 근거가 없어 트렌드로 확정 못 함. 단 벤치마크 실측 대조는 유효.</p>
+      <div class="grp">미검증 관찰</div>
+      <p class="note">T1·T2 매체 보도가 없어 본문에서 제외한 관찰이다.</p>
       {demo_block}
       <details><summary>▸ 브랜드 상세 실측 (datalayer, Shopify 직수집)</summary>
         <div class="tbl-wrap"><table>
@@ -404,14 +487,14 @@ def render_html(analysis, naver: dict, crawl_results: list[dict], evidence: list
         </table></div></details>
       <details><summary>▸ 출처 · 권위 티어 ({E(tier_summary)})</summary>
         <div class="tbl-wrap"><table>
-          <tr><th>ID</th><th>권위</th><th>URL</th><th>브랜드</th></tr>
+          <tr><th>ID</th><th>권위</th><th>제목</th><th>매체</th><th>브랜드</th></tr>
           {src_rows}
         </table></div></details>
       <div class="grp">데이터 한계 · 수집 실패</div>
       <ul class="gaps">{lims}{fail_html}</ul>
     </section>
 
-    <footer>md-trend-agent · 코드 렌더링(LLM 자유생성 아님) · 실측 = Shopify 직수집 datalayer</footer>
+    <footer>md-trend-agent · 실측 데이터 = 벤치마크 공식몰 직수집</footer>
     </div>'''
 
     return ('<!doctype html><html><head><meta charset="utf-8"></head><body>'
@@ -430,10 +513,30 @@ def _offline_check() -> None:
     naver = {"signals": [{"source": "shopping_keyword", "group": "캐시미어니트",
                           "series": [{"period": "2026-06-01", "ratio": 100.0}],
                           "requested_segment": "25-39", "observed_segment": "20-39",
-                          "coverage_mismatch": True, "note": ""}], "failures": []}
+                          "coverage_mismatch": True, "note": ""},
+                         {"source": "item_search_trend", "group": "캐시미어 가디건",
+                          "series": [{"period": "2026-06-01", "ratio": 40.0},
+                                     {"period": "2026-06-08", "ratio": 100.0},
+                                     {"period": "2026-06-15", "ratio": 70.0}],
+                          "requested_segment": "25-39", "observed_segment": "25-39",
+                          "coverage_mismatch": False, "note": ""},
+                         {"source": "search_trend", "group": "제로수요",
+                          "series": [{"period": "2026-06-01", "ratio": 0.0},
+                                     {"period": "2026-06-08", "ratio": 0.0}],
+                          "requested_segment": "25-39", "observed_segment": "25-39",
+                          "coverage_mismatch": False, "note": ""},
+                         {"source": "brand_search_trend", "group": "Arch4",
+                          "series": [{"period": "2026-06-01", "ratio": 88.0}],
+                          "requested_segment": "25-39", "observed_segment": "25-39",
+                          "coverage_mismatch": False, "note": ""},
+                         {"source": "brand_search_trend", "group": "Quince",
+                          "series": [],
+                          "requested_segment": "25-39", "observed_segment": "25-39",
+                          "coverage_mismatch": False, "note": ""}], "failures": []}
     crawl = [{"url": "https://x.com", "ok": False, "text": "", "error": "timeout", "fetched_at": "t"}]
     ev = [{"id": "E014", "url": "https://www.harpersbazaar.com/x", "brand": None, "tier": 2,
            "authority": "T2 에디토리얼", "image": "https://media.hb.com/hero.jpg",
+           "title": "The Best Cashmere Sweaters of 2026",
            "fetched_at": "2026-07-20T00:00:00"}]
     dl = [{"brand": "Arch4", "source": "shopify", "count": 2, "failure": None,
            "currency": "GBP", "price": {"min": 130.0, "max": 240.0, "p25": 150.0,
@@ -456,6 +559,16 @@ def _offline_check() -> None:
     assert "근거약한관찰" in out and "미검증 관찰" in out, "강등 트렌드 부록 누락"
     assert "Best-Selling Quince Cashmere" in out, "미수집 브랜드 steady 신호 누락"
     assert "T2 에디토리얼" in out and "1,902" not in out
+    assert "Harper&#x27;s Bazaar" in out, "매체명 링크 라벨 누락"
+    assert "The Best Cashmere Sweaters of 2026" in out, "기사 제목 누락"
+    assert "벤치마크 브랜드 검색 수요" in out and "Arch4" in out, "브랜드 수요 누락"
+    assert "실측 대조" not in out, "실측 대조 제거 안 됨"
+    assert out.count('class="spark"') == 4, "스파크라인 누락 (all-zero 시리즈 포함)"
+    assert "아이템 수요" in out and "캐시미어 가디건" in out, "아이템 수요 누락"
+    assert "주력 Sweater" in out, "브랜드 시그니처 병기 누락"
+    assert "미수집" not in out, "미수집 제거 안 됨"
+    assert "검색량 미검출" in out and "Quince" in out, "검색량 0 브랜드 표기 누락"
+    assert 'class="hero"' in out, "트렌드 대표 이미지 누락"
     assert out.count("<details>") >= 2, "부록 접기 누락"
     print("report_html offline checks OK")
 

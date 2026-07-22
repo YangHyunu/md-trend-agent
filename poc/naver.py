@@ -21,6 +21,28 @@ def build_search_trend_payload(start: str, end: str) -> dict:
     }
 
 
+def build_item_trend_payload(start: str, end: str) -> dict:
+    return {
+        "startDate": start,
+        "endDate": end,
+        "timeUnit": "week",
+        "keywordGroups": config.ITEM_KEYWORD_GROUPS,
+        "gender": "f",
+        "ages": config.SEARCH_TREND_AGES,
+    }
+
+
+def build_brand_trend_payload(start: str, end: str) -> dict:
+    return {
+        "startDate": start,
+        "endDate": end,
+        "timeUnit": "week",
+        "keywordGroups": config.BRAND_KEYWORD_GROUPS,
+        "gender": "f",
+        "ages": config.SEARCH_TREND_AGES,
+    }
+
+
 def build_shopping_category_payload(start: str, end: str) -> dict:
     return {
         "startDate": start,
@@ -61,6 +83,8 @@ def _normalize(raw: dict, source: str, coverage_mismatch: bool) -> list[dict]:
 
 CALLS = [
     ("search_trend", "/search-trend/v1/search", build_search_trend_payload, False),
+    ("item_search_trend", "/search-trend/v1/search", build_item_trend_payload, False),
+    ("brand_search_trend", "/search-trend/v1/search", build_brand_trend_payload, False),
     ("shopping_category", "/shopping/v1/categories", build_shopping_category_payload, True),
     ("shopping_keyword", "/shopping/v1/category/keywords", build_shopping_keyword_payload, True),
 ]
@@ -102,6 +126,14 @@ def _offline_check() -> None:
     assert p["ages"] == ["4", "5", "6"], "Search Trend 연령 코드 오류"
     assert len(p["keywordGroups"]) <= 5
     assert all(len(g["keywords"]) <= 20 for g in p["keywordGroups"])
+
+    i = build_item_trend_payload("2026-05-25", "2026-07-20")
+    assert i["ages"] == ["4", "5", "6"] and len(i["keywordGroups"]) <= 5
+
+    b = build_brand_trend_payload("2026-05-25", "2026-07-20")
+    assert b["ages"] == ["4", "5", "6"], "브랜드 수요 연령 코드 오류"
+    assert len(b["keywordGroups"]) <= 5
+    assert all(len(g["keywords"]) <= 20 for g in b["keywordGroups"])
 
     c = build_shopping_category_payload("2026-05-25", "2026-07-20")
     assert c["ages"] == ["20", "30"], "Shopping Insight 연령 코드 오류"

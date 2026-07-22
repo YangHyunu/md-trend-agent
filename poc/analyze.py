@@ -69,6 +69,14 @@ AUTHORITY_RULE = (
     "T1·T2 근거가 없는 트렌드는 값에 '권위 근거 없음'이라 쓰고 evidence_ids는 빈 배열로 둔다."
 )
 
+# LLM 상투어 억제 — 보고서가 컨설팅 슬라이드체로 흐르는 것 방지 (오너 요청 2026-07-21).
+STYLE_RULE = (
+    "문체 규칙: 건조한 보고체. 매체가 보도한 사실과 실측 수치, 그리고 결론만 쓴다. "
+    "금지 표현: '~을 시사한다', '~로 판단된다', '~ 국면', '부상', '주목', '지배', '압도', "
+    "'유효 포맷', '컬러 스토리', '~로 보인다', '~하고 있다' 남발. "
+    "형용사 수식은 최소화하고, 같은 내용을 두 번 말하지 않는다."
+)
+
 
 def _call(system: str, user: str, output_format):
     client = anthropic.Anthropic()
@@ -144,12 +152,17 @@ def run_analyst(researcher: ResearcherOutput, evidence: list[dict],
     system = (
         "너는 여성 캐시미어·니트웨어 브랜드의 MD 분석가 겸 에디터다. "
         "리서처가 정리한 사실과 원본 근거를 바탕으로 다음을 작성한다: "
-        "(1) 트렌드(상승/주류/포화/둔화 구분), (2) Design Map — 브랜드별 핵심 아이템/컬러/소재/"
+        "(1) 트렌드 테마 정확히 3개 — 개별 기사 나열이 아니라 여러 기사를 관통하는 키워드로 묶는다. "
+        "각 테마의 name은 짧은 키워드, rationale은 패션지 에디터의 트렌드 칼럼처럼 4~6문장으로 쓴다: "
+        "어떤 매체가 무엇을 보도했는지(아이템·컬러·패턴·실루엣을 구체적으로), 보도들이 어떻게 "
+        "하나의 흐름으로 이어지는지, 마지막 한 문장은 한국 25~39 여성 타깃 MD에게 갖는 함의. "
+        "테마마다 phase(상승/주류/포화/둔화)를 지정한다. "
+        "(2) Design Map — 브랜드별 핵심 아이템/컬러/소재/"
         "실루엣/디테일/가격대 매트릭스, 자동수집 브랜드 11개 각각 한 행씩, "
         "(3) 상품 구성 공백(gaps), (4) 실행 가능한 MD 액션 3개 이상, (5) 데이터 한계(limitations). "
         "타깃(한국 여성 25~39세)과 가격대(20만~70만원) 적합성을 항상 고려한다. "
         "근거 약한 주장은 액션에 넣지 말고 limitations에 '추가 조사 필요'로 내린다. "
-        + EVIDENCE_RULE + " " + AUTHORITY_RULE
+        + EVIDENCE_RULE + " " + AUTHORITY_RULE + " " + STYLE_RULE
     )
     user = json.dumps({"researcher_facts": researcher.model_dump()}, ensure_ascii=False) \
         + "\n\n" + _payload(evidence, signals)

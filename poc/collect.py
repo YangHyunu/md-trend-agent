@@ -112,14 +112,17 @@ async def _crawl_async(urls: list[str]) -> list[dict]:
                 ok = len(text) >= MIN_TEXT_CHARS
                 meta = r.metadata or {}
                 image = meta.get("og:image") or meta.get("twitter:image") or None
+                title = (meta.get("og:title") or meta.get("title") or "").strip() or None
                 results.append({
                     "url": u, "ok": ok, "text": text[:STORE_TEXT_CHARS],
                     "image": image,  # 대표 이미지 (og:image) — 보고서 썸네일용
+                    "title": title,  # 기사/페이지 제목 — 보고서 링크 라벨용
                     "error": None if ok else f"추출 실패: 본문 {len(text)}자 (<{MIN_TEXT_CHARS})",
                     "fetched_at": fetched_at,
                 })
             except Exception as e:
                 results.append({"url": u, "ok": False, "text": "", "image": None,
+                                "title": None,
                                 "error": f"{type(e).__name__}: {e}", "fetched_at": fetched_at})
             print(f" crawl {'OK ' if results[-1]['ok'] else 'FAIL'} {u}", file=sys.stderr)
     return results
@@ -165,6 +168,7 @@ def build_evidence(crawl_results: list[dict]) -> list[dict]:
             "tier": tier,
             "authority": authority,
             "image": r.get("image"),
+            "title": r.get("title"),
             "fetched_at": r["fetched_at"],
         })
     return evidence
@@ -184,11 +188,13 @@ def _offline_check() -> None:
     urls = select_urls([{"url": f"https://site{i}.com/p", "found_via": "q"} for i in range(30)])
     assert len(urls) <= config.MAX_CRAWL_URLS
     fake = [{"url": "https://www.quince.com/w", "ok": True, "text": "x" * 600,
-             "image": "https://cdn.quince.com/og.jpg", "error": None, "fetched_at": "t"},
+             "image": "https://cdn.quince.com/og.jpg", "title": "Mongolian Cashmere",
+             "error": None, "fetched_at": "t"},
             {"url": "https://a.com", "ok": False, "text": "", "error": "e", "fetched_at": "t"}]
     ev = build_evidence(fake)
     assert len(ev) == 1 and ev[0]["id"] == "E001" and ev[0]["source_type"] == "official"
     assert ev[0]["image"] == "https://cdn.quince.com/og.jpg", "og:image evidence 통과 실패"
+    assert ev[0]["title"] == "Mongolian Cashmere", "title evidence 통과 실패"
     # 권위 티어 (MDA-10)
     assert classify_authority("https://www.businessoffashion.com/x", None) == (1, "T1 업계지")
     assert classify_authority("https://www.vogue.com/fashion/x", None)[0] == 2

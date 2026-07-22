@@ -52,6 +52,26 @@ SEARCH_KEYWORD_GROUPS = [
 # Shopping Insight 키워드별: 최대 5개 그룹, 그룹당 검색어 1개
 SHOPPING_KEYWORDS = ["캐시미어니트", "캐시미어가디건", "캐시미어스웨터", "여성니트", "캐시미어코트"]
 
+# Search Trend 아이템 수요 — 시그니처·유사 상품 축. Shopping Insight 키워드 집계가
+# 데이터 0을 반환(실측 2026-07-21)해 search_trend로 측정. 별도 요청(정규화 분리).
+ITEM_KEYWORD_GROUPS = [
+    {"groupName": "캐시미어 니트", "keywords": ["캐시미어니트", "캐시미어 니트"]},
+    {"groupName": "캐시미어 가디건", "keywords": ["캐시미어가디건", "캐시미어 가디건"]},
+    {"groupName": "캐시미어 스웨터", "keywords": ["캐시미어스웨터", "캐시미어 스웨터"]},
+    {"groupName": "니트 베스트", "keywords": ["니트베스트", "니트조끼"]},
+    {"groupName": "니트 원피스", "keywords": ["니트원피스", "캐시미어원피스"]},
+]
+
+# Search Trend 브랜드 수요 — 별도 요청 (카테고리 키워드와 한 요청에 섞으면
+# ratio 최대=100 정규화에 브랜드 신호가 묻힘). 벤치마크 브랜드 국문 검색어.
+BRAND_KEYWORD_GROUPS = [
+    {"groupName": "COS", "keywords": ["COS니트", "코스니트", "COS가디건", "코스 니트"]},
+    {"groupName": "Le Cashmere", "keywords": ["르캐시미어", "르캐시미어니트", "르캐시미어 니트"]},
+    {"groupName": "Quince", "keywords": ["퀸스캐시미어", "퀸스 캐시미어", "퀸스니트"]},
+    {"groupName": "Lisa Yang", "keywords": ["리사양니트", "리사양 니트", "리사양캐시미어", "리사양 캐시미어"]},
+    {"groupName": "Extreme Cashmere", "keywords": ["익스트림캐시미어", "익스트림 캐시미어"]},
+]
+
 # 네이버쇼핑 cat_id: 패션의류 > 여성의류 > 니트/스웨터.
 # 2026-07-20 live 검증됨: shopping_category 200 + title "여성 니트/스웨터" 반환 확인.
 SHOPPING_CAT_ID = "50000804"
@@ -64,6 +84,8 @@ AUTHORITY_QUERIES = [
     "knitwear color trend 2026",
     "sweater silhouette trend 2026",
     "luxury cashmere brands market",
+    "fall winter 2026 runway knitwear",
+    "best knitwear fashion week 2026",
 ]
 
 TAVILY_QUERIES = [
@@ -113,7 +135,7 @@ def period() -> tuple[str, str]:
 
 # --- 예산 (POC_SPEC §7. 초과 시 자르고 진행) ---
 MAX_TAVILY_QUERIES = 8
-MAX_CRAWL_URLS = 20
+MAX_CRAWL_URLS = 26
 MAX_NAVER_CALLS = 6
 CRAWL_TIMEOUT_SEC = 60
 MAX_PER_DOMAIN = 5
