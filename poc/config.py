@@ -180,3 +180,6 @@ KNIT_FILTER_TERMS = [
 ]
 ARTICLES_PATH = OUT_DIR / "articles.jsonl"
 MAX_CONCEPTS = 20  # LLM#1 concept 상한 (V2 §21.2 예산 파생)
+
+# --- M2 concept 측정 (SPEC_V3 §7) ---
+MAX_CONCEPT_TREND_CALLS = 4   # concepts ≤20 ÷ 요청당 5그룹 = 4 (V2 §21 weekly 예산)

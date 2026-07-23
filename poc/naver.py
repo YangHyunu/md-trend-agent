@@ -121,6 +121,68 @@ def fetch_all() -> dict:
     return result
 
 
+def build_concept_trend_payload(concepts: list[dict], start: str, end: str) -> dict:
+    """LLM#1 concepts ≤5개 배치 → Search Trend payload. 그룹=concept, 키워드=naver_queries."""
+    return {
+        "startDate": start,
+        "endDate": end,
+        "timeUnit": "week",
+        "keywordGroups": [
+            {"groupName": c["label_ko"], "keywords": c["naver_queries"][:20]}
+            for c in concepts
+        ],
+        "gender": "f",
+        "ages": config.SEARCH_TREND_AGES,
+    }
+
+
+def fetch_concept_trends(concepts: list[dict],
+                         client: httpx.Client | None = None) -> dict:
+    """concepts → NAVER Search Trend 시계열 (SPEC_V3 §7 주 무대). 반환 계약 fetch_all과 동일.
+
+    5개씩 배치, MAX_CONCEPT_TREND_CALLS 초과 배치는 silent 절단 대신 failures에 기록.
+    signal.group = label_ko — 머지 번들 조립(poc/bundle.py)의 조인 키.
+    """
+    client_id = os.environ.get("NCP_API_HUB_CLIENT_ID")
+    client_secret = os.environ.get("NCP_API_HUB_CLIENT_SECRET")
+    if not client_id or not client_secret:
+        return {"raw": {}, "signals": [], "failures": [
+            {"call": "concept_trend", "error": "NCP_API_HUB_CLIENT_ID/SECRET 환경변수 없음"}]}
+
+    headers = {
+        "X-NCP-APIGW-API-KEY-ID": client_id,
+        "X-NCP-APIGW-API-KEY": client_secret,
+        "Content-Type": "application/json",
+    }
+    start, end = config.period()
+    result = {"raw": {}, "signals": [], "failures": []}
+    batches = [concepts[i:i + 5] for i in range(0, len(concepts), 5)]
+    own = client is None
+    if own:
+        client = httpx.Client(base_url=config.NAVER_BASE_URL, headers=headers, timeout=20)
+    else:
+        client.headers.update(headers)
+    try:
+        for i, batch in enumerate(batches):
+            name = f"concept_trend_b{i}"
+            if i >= config.MAX_CONCEPT_TREND_CALLS:
+                result["failures"].append({"call": name, "error": "NAVER 호출 예산 초과로 생략"})
+                continue
+            try:
+                resp = client.post("/search-trend/v1/search",
+                                   json=build_concept_trend_payload(batch, start, end))
+                resp.raise_for_status()
+                raw = resp.json()
+                result["raw"][name] = raw
+                result["signals"].extend(_normalize(raw, "concept_trend", False))
+            except Exception as e:
+                result["failures"].append({"call": name, "error": f"{type(e).__name__}: {e}"})
+    finally:
+        if own:
+            client.close()
+    return result
+
+
 def _offline_check() -> None:
     p = build_search_trend_payload("2026-05-25", "2026-07-20")
     assert p["ages"] == ["4", "5", "6"], "Search Trend 연령 코드 오류"
