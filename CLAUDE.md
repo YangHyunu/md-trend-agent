@@ -109,9 +109,8 @@ and defer overlapping spec docs rather than spawning new ones.
 
 ## 6. Session Continuity Protocol
 
-> This project has no git repo yet — no worktrees exist, so the rules below are
-> currently dormant. They activate once `git init` is run and worktrees are
-> actually created. This is pre-provisioning only.
+> Git repo is live (github.com/YangHyunu/md-trend-agent) and worktrees exist
+> under `.worktrees/`. The rules below are ACTIVE.
 
 1. **MEMORY.md has a single writer — only the main session writes it.**
    - **Main checkout session** (`/Users/yanghyeon-u/Desktop/md-trend-agent`): **may write**
