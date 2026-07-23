@@ -72,12 +72,12 @@ def build_corpus_input(
     web = [
         {
             "ref": f"w{i}",
-            "query": r.get("query", ""),
             "title": r.get("title", ""),
             "url": r.get("url", ""),
-            "content": (r.get("content") or "")[:300],
+            "content": (r.get("text") or "")[:300],
         }
         for i, r in enumerate(crawl_results)
+        if r.get("ok", True)
     ]
     bundle = {
         "articles": [
@@ -139,7 +139,18 @@ def main(now: datetime | None = None) -> dict:
         kept, dropped = run_corpus(bundle, valid_refs)
     except Exception as exc:
         # LLM#1 실패 → 직전 주 concepts 유지 (SPEC_V3 §4 실패 격리)
-        return {"concepts": len(prior), "dropped": 0, "fallback": str(exc)}
+        return {"concepts": len(prior), "dropped": 0, "fallback": f"{type(exc).__name__}: {exc}"}
+
+    if not kept:
+        # 전량 폐기 → concepts.json 덮어쓰지 않고 직전 주 유지, 진단만 기록 (SPEC_V3 §15 fallback guarantee)
+        (config.OUT_DIR / "concepts_dropped.json").write_text(
+            json.dumps(dropped, ensure_ascii=False, indent=2)
+        )
+        return {
+            "concepts": len(prior),
+            "dropped": len(dropped),
+            "fallback": "all_concepts_dropped",
+        }
 
     concepts = [c.model_dump() for c in kept]
     prior_path.write_text(json.dumps(concepts, ensure_ascii=False, indent=2))
