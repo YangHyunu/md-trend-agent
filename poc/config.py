@@ -187,3 +187,7 @@ MAX_CONCEPT_TREND_CALLS = 4   # concepts ≤20 ÷ 요청당 5그룹 = 4 (V2 §21
 # --- 방향/델타 경계값 (SPEC_V3 §8.3 — 판정 정합은 결정론 소유, §9.2 소량 베이스 캡) ---
 DELTA_FLAT_BAND_PCT = 10.0   # |delta| < 10% → flat(→). 오너 튜닝 가능 상수.
 SMALL_BASE_MEAN = 3.0        # 직전4주 평균 < 3 → small_base(△), delta_pct 미산출(과장 금지)
+
+# --- M3 합성 3분류 경계 (SPEC_V3 §8.3 — 판정 정합은 결정론 소유) ---
+SUPPLY_SCARCE_MAX = 2       # 수요 상승 + 공급 count ≤ 2 = 수요-공급 갭(기회 신호)
+DELTA_TOLERANCE_PCT = 0.1   # validator 숫자(변동%) 대조 허용 오차

@@ -1,0 +1,31 @@
+{
+  "schema_version": "3.0",
+  "iso_week": "2026-W30",
+  "generated_at": "2026-07-23T03:00:00+00:00",
+  "concepts": [
+    {"concept": {"label_ko": "캐시미어 니트", "label_en": "cashmere knit",
+                 "category": "소재", "source_refs": ["a0000000001", "w0"]},
+     "naver": {"direction": "up", "delta_pct": 42.0,
+               "series": [{"period": "2026-06-01", "ratio": 10}],
+               "recent_mean": 20.0, "prior_mean": 14.0},
+     "supply": {"supply_count": 12, "facets": {}, "unmeasurable": false},
+     "editorial_count": 2},
+    {"concept": {"label_ko": "포인텔 니트", "label_en": "pointelle knit",
+                 "category": "소재", "source_refs": ["a0000000002"]},
+     "naver": {"direction": "small_base", "delta_pct": null,
+               "series": [{"period": "2026-06-01", "ratio": 1}],
+               "recent_mean": 2.0, "prior_mean": 1.0},
+     "supply": {"supply_count": null, "facets": {}, "unmeasurable": true},
+     "editorial_count": 1},
+    {"concept": {"label_ko": "크롭 가디건", "label_en": "cropped cardigan",
+                 "category": "아이템", "source_refs": ["a0000000003"]},
+     "naver": {"direction": "down", "delta_pct": -30.0,
+               "series": [{"period": "2026-06-01", "ratio": 30}],
+               "recent_mean": 14.0, "prior_mean": 20.0},
+     "supply": {"supply_count": 4, "facets": {}, "unmeasurable": false},
+     "editorial_count": 0}
+  ],
+  "pinterest_category": [],
+  "supply_brands": [{"brand": "Quince", "count": 12}],
+  "coverage": {}
+}
