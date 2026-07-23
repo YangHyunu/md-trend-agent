@@ -7,9 +7,10 @@
 
     0 9 * * * cd /Users/yanghyeon-u/Desktop/md-trend-agent && .venv/bin/python -m poc.rss >> out/rss_poll.log 2>&1
 
-## weekly — 코퍼스 (분석 run의 1단계, M2에서 전체 파이프라인으로 확장)
+## weekly — 분석 run (코퍼스 → 측정 3축 → 머지 번들)
 
-    0 10 * * 1 cd /Users/yanghyeon-u/Desktop/md-trend-agent && .venv/bin/python -m poc.corpus >> out/corpus_run.log 2>&1
+    0 10 * * 1 cd /Users/yanghyeon-u/Desktop/md-trend-agent && .venv/bin/python -m poc.weekly >> out/weekly_run.log 2>&1
 
 - weekly 요일은 config 취급(SPEC_V3 §5.2) — 현재 월요일 10:00 KST.
-- LLM·API 예산은 weekly run에만 발생(V2 §21).
+- LLM·API 예산은 weekly run에만 발생(V2 §21). M2 기준 LLM 호출은 corpus(LLM#1) 1회뿐.
+- M3(LLM#2 합성)가 이 run 뒤에 붙는다.
