@@ -1,5 +1,7 @@
+import json
 from datetime import datetime, timezone
 
+from poc import config, corpus
 from poc.corpus import Concept, CorpusOutput, build_corpus_input, validate_concepts
 
 _NOW = datetime(2026, 7, 23, tzinfo=timezone.utc)
@@ -73,3 +75,49 @@ def test_validate_caps_at_max_concepts():
     kept, dropped = validate_concepts(out, {"afresh-01"}, max_concepts=3)
     assert len(kept) == 3
     assert [d["reason"] for d in dropped] == ["over_max_concepts"] * 2
+
+
+def _seed_articles(monkeypatch, tmp_path):
+    articles_path = tmp_path / "articles.jsonl"
+    articles_path.write_text(
+        json.dumps(_article("https://x/fresh-01", "2026-07-22T00:00:00+00:00")) + "\n"
+    )
+    monkeypatch.setattr(config, "ARTICLES_PATH", articles_path)
+    monkeypatch.setattr(config, "OUT_DIR", tmp_path)
+
+
+def test_main_writes_validated_concepts(monkeypatch, tmp_path):
+    _seed_articles(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        corpus, "_call",
+        lambda system, user, fmt: CorpusOutput(concepts=[
+            _concept(),
+            _concept(label_ko="유령", source_refs=["ghost"]),
+        ]),
+    )
+
+    summary = corpus.main(now=_NOW)
+
+    saved = json.loads((tmp_path / "concepts.json").read_text())
+    dropped = json.loads((tmp_path / "concepts_dropped.json").read_text())
+    assert summary == {"concepts": 1, "dropped": 1}
+    assert saved[0]["label_ko"] == "포인텔 니트"
+    assert dropped[0]["reason"] == "no_valid_source_refs"
+
+
+def test_main_falls_back_to_prior_on_llm_failure(monkeypatch, tmp_path):
+    _seed_articles(monkeypatch, tmp_path)
+    prior = [_concept().model_dump()]
+    (tmp_path / "concepts.json").write_text(json.dumps(prior, ensure_ascii=False))
+
+    def _boom(system, user, fmt):
+        raise RuntimeError("api down")
+
+    monkeypatch.setattr(corpus, "_call", _boom)
+
+    summary = corpus.main(now=_NOW)
+
+    assert summary["fallback"] == "api down"
+    assert summary["concepts"] == 1
+    # 직전 주 파일은 무변경
+    assert json.loads((tmp_path / "concepts.json").read_text()) == prior
