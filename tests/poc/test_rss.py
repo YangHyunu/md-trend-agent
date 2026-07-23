@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from poc.rss import parse_feed
+from poc.rss import parse_feed, filter_by_terms
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -24,3 +24,17 @@ def test_parse_feed_skips_items_without_link():
       <item><title>no link</title></item>
     </channel></rss>"""
     assert parse_feed(xml, source="wwd:wool") == []
+
+
+def test_filter_by_terms_keeps_only_matches_and_records_terms():
+    xml = (FIXTURES / "glossy_all_feed.xml").read_text()
+    articles = parse_feed(xml, source="glossy:vogue")
+    kept = filter_by_terms(articles, ["cashmere", "cardigan", "knit"])
+    assert len(kept) == 1
+    assert kept[0]["url"] == "https://www.vogue.com/article/cashmere-cardigans"
+    assert sorted(kept[0]["matched_terms"]) == ["cardigan", "cashmere", "knit"]
+
+
+def test_filter_by_terms_is_case_insensitive():
+    articles = [{"title": "CASHMERE now", "excerpt": "", "matched_terms": []}]
+    assert filter_by_terms(articles, ["cashmere"])[0]["matched_terms"] == ["cashmere"]

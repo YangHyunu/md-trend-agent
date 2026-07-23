@@ -44,3 +44,13 @@ def parse_feed(xml_text: str, source: str) -> list[dict]:
             }
         )
     return articles
+
+
+def filter_by_terms(articles: list[dict], terms: list[str]) -> list[dict]:
+    kept = []
+    for a in articles:
+        text = f"{a['title']} {a['excerpt']}".lower()
+        matched = [t for t in terms if t in text]
+        if matched:
+            kept.append({**a, "matched_terms": matched})
+    return kept

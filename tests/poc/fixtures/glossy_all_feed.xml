@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Vogue — All</title>
+    <link>https://www.vogue.com/</link>
+    <item>
+      <title>The Cashmere Cardigans Editors Love</title>
+      <link>https://www.vogue.com/article/cashmere-cardigans</link>
+      <pubDate>Tue, 21 Jul 2026 08:00:00 +0000</pubDate>
+      <description>Soft cashmere knits for the season.</description>
+    </item>
+    <item>
+      <title>Best Sneakers of Summer</title>
+      <link>https://www.vogue.com/article/best-sneakers</link>
+      <pubDate>Tue, 21 Jul 2026 07:00:00 +0000</pubDate>
+      <description>Nothing about yarn here.</description>
+    </item>
+  </channel>
+</rss>
