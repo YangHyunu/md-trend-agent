@@ -95,3 +95,33 @@ def test_fetch_all_wires_all_three_sources(monkeypatch):
     srcs = {s["source"] for s in res["signals"]}
     assert srcs == {"pinterest_trends", "pinterest_kw_metrics", "pinterest_category"}
     assert res["failures"] == []
+
+
+def test_fetch_categories_only_calls_category_endpoint(monkeypatch):
+    monkeypatch.setenv("PINTEREST_ACCESS_TOKEN", "tok")
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.path)
+        assert request.url.path == "/v5/trends/product_categories/details"
+        return httpx.Response(200, json=[{
+            "product_category": "SWEATERS_AND_CARDIGANS",
+            "time_series": {"2026-06-01": 80}, "has_prediction": False,
+        }])
+
+    from poc.pinterest import fetch_categories
+    client = httpx.Client(transport=httpx.MockTransport(handler),
+                          base_url=config.PINTEREST_BASE_URL)
+    with client:
+        res = fetch_categories(client=client)
+    assert calls == ["/v5/trends/product_categories/details"]   # trends/kw_metrics 미호출
+    assert len(res["signals"]) == 1
+    assert res["signals"][0]["source"] == "pinterest_category"
+    assert res["failures"] == []
+
+
+def test_fetch_categories_without_token(monkeypatch):
+    monkeypatch.delenv("PINTEREST_ACCESS_TOKEN", raising=False)
+    from poc.pinterest import fetch_categories
+    res = fetch_categories()
+    assert res["signals"] == [] and len(res["failures"]) == 1

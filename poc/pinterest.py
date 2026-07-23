@@ -118,6 +118,32 @@ def fetch_all(client: httpx.Client | None = None) -> dict:
     return result
 
 
+def fetch_categories(client: httpx.Client | None = None) -> dict:
+    """카테고리 details 단독 fetch (SPEC_V3 §7 — keywords/metrics는 코퍼스·검증 용도 제외).
+
+    M2 weekly 측정용. fetch_all(3축)은 report v2 경로에서 그대로 유지.
+    """
+    token = os.environ.get("PINTEREST_ACCESS_TOKEN")
+    if not token:
+        return {"raw": {}, "signals": [], "failures": [
+            {"call": "pinterest_category", "error": "PINTEREST_ACCESS_TOKEN 환경변수 없음"}]}
+
+    result = {"raw": {}, "signals": [], "failures": []}
+    own = client is None
+    if own:
+        client = httpx.Client(base_url=config.PINTEREST_BASE_URL, timeout=20)
+    client.headers["Authorization"] = f"Bearer {token}"
+    try:
+        _get(client, "/v5/trends/product_categories/details",
+             {"region": config.PINTEREST_REGION,
+              "product_categories": ",".join(config.PINTEREST_CATEGORIES)},
+             "pinterest_category", result, normalize_category)
+    finally:
+        if own:
+            client.close()
+    return result
+
+
 if __name__ == "__main__":
     config.OUT_DIR.mkdir(exist_ok=True)
     res = fetch_all()
