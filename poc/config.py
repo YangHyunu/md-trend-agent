@@ -183,3 +183,7 @@ MAX_CONCEPTS = 20  # LLM#1 concept 상한 (V2 §21.2 예산 파생)
 
 # --- M2 concept 측정 (SPEC_V3 §7) ---
 MAX_CONCEPT_TREND_CALLS = 4   # concepts ≤20 ÷ 요청당 5그룹 = 4 (V2 §21 weekly 예산)
+
+# --- 방향/델타 경계값 (SPEC_V3 §8.3 — 판정 정합은 결정론 소유, §9.2 소량 베이스 캡) ---
+DELTA_FLAT_BAND_PCT = 10.0   # |delta| < 10% → flat(→). 오너 튜닝 가능 상수.
+SMALL_BASE_MEAN = 3.0        # 직전4주 평균 < 3 → small_base(△), delta_pct 미산출(과장 금지)
