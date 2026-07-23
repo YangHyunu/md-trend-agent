@@ -1,5 +1,7 @@
-"""라이브 스모크: python -m datalayer.smoke [브랜드명부분]
-실제 몰에 붙어 추출 결과 요약 출력. 테스트 아님(네트워크 의존)."""
+"""라이브 스모크: python -m poc.smoke [브랜드명부분]
+실제 몰에 붙어 추출 결과 요약 출력. 테스트 아님(네트워크 의존).
+
+poc→datalayer 정방향 의존만 유지하려고 datalayer가 아닌 poc에 둔다."""
 import sys
 
 from poc import config
