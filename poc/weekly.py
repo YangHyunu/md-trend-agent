@@ -7,7 +7,7 @@ import json
 from datetime import datetime, timezone
 
 from datalayer.extract import extract_all
-from poc import bundle, config, corpus, naver, pinterest, storage
+from poc import bundle, config, corpus, naver, pinterest, storage, synthesize
 from poc.rss import load_articles
 
 
@@ -46,6 +46,10 @@ def run(now: datetime | None = None) -> dict:
     weekly_dir.mkdir(exist_ok=True)
     (weekly_dir / f"merge_bundle_{merged.iso_week}.json").write_text(payload, encoding="utf-8")
 
+    # LLM#2 합성 (§8). 실패는 격리(§4.4): 번들은 이미 저장됨. M4 착지 후 prior_weekly 실배선.
+    synthesis_status = synthesize.synthesize_bundle(
+        merged.model_dump(), synthesize._load_prior_weekly())
+
     # 저장 배선 (M4, SPEC_V3 §9) — 번들·articles를 sqlite 3테이블로 이관.
     # 실패는 격리(§4): 저장 문제가 report 경로를 죽이지 않도록 summary에만 기록.
     # db·articles 경로는 config.OUT_DIR에서 런타임 파생(테스트 격리 존중).
@@ -61,6 +65,7 @@ def run(now: datetime | None = None) -> dict:
         "iso_week": merged.iso_week,
         "concepts": len(merged.concepts),
         "coverage": {k: v.ratio for k, v in merged.coverage.items()},
+        "synthesis": synthesis_status,
         "storage": storage_result,
     }
 

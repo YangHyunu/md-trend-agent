@@ -190,3 +190,7 @@ SMALL_BASE_MEAN = 3.0        # 직전4주 평균 < 3 → small_base(△), delta_
 
 # --- M4 저장 (SPEC_V3 §9) ---
 DB_PATH = OUT_DIR / "trend.db"   # sqlite 파일 1개. 배포 전환 시 pgvector — driver 뒤 (§9.3)
+
+# --- M3 합성 3분류 경계 (SPEC_V3 §8.3 — 판정 정합은 결정론 소유) ---
+SUPPLY_SCARCE_MAX = 2       # 수요 상승 + 공급 count ≤ 2 = 수요-공급 갭(기회 신호)
+DELTA_TOLERANCE_PCT = 0.1   # validator 숫자(변동%) 대조 허용 오차
