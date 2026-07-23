@@ -1,4 +1,5 @@
 """rung1 — Shopify /products.json. POC_SPEC §12.1."""
+import time
 from urllib.parse import urlparse
 
 import httpx
@@ -10,6 +11,20 @@ from datalayer.records import (
 )
 
 MAX_PAGES = 40  # 250*40=10000 상품 안전상한 (초과 시 조용히 잘림 방지용 캡)
+
+
+def _get(client: httpx.Client, url: str, params: dict | None = None, *,
+         retries: int = 4, sleep_fn=time.sleep) -> httpx.Response:
+    """429 local_rate_limited는 지수 백오프로 재시도. Shopify per-IP throttle 대응."""
+    delay = 0.5
+    r = client.get(url, params=params)
+    for _ in range(retries):
+        if r.status_code != 429:
+            return r
+        sleep_fn(delay)
+        delay *= 2
+        r = client.get(url, params=params)
+    return r
 
 
 def _origin(url: str) -> str:
@@ -30,7 +45,7 @@ def _shop_currency(origin: str, client: httpx.Client) -> str | None:
 def _fetch_all(origin: str, client: httpx.Client) -> list[dict]:
     products: list[dict] = []
     for page in range(1, MAX_PAGES + 1):
-        r = client.get(f"{origin}/products.json", params={"limit": 250, "page": page})
+        r = _get(client, f"{origin}/products.json", {"limit": 250, "page": page})
         r.raise_for_status()
         batch = r.json().get("products", [])
         if not batch:
@@ -121,7 +136,7 @@ class ShopifySource:
               client: httpx.Client) -> list[ProductRecord] | None:
         origin = _origin(homepage_url)
         try:  # 프로브: Shopify 여부 판정 (limit=1)
-            r = client.get(f"{origin}/products.json", params={"limit": 1, "page": 1})
+            r = _get(client, f"{origin}/products.json", {"limit": 1, "page": 1})
         except httpx.HTTPError:
             return None
         if r.status_code != 200:

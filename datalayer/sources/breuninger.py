@@ -23,20 +23,25 @@ _LD_RE = re.compile(
 
 
 def _item_list(html: str) -> list[dict]:
-    """ld+json 블록 중 ItemList의 Product 요소들을 반환."""
+    """ld+json 블록 중 ItemList의 Product 요소들을 반환.
+
+    라이브 페이지는 한 블록이 [WebPage, BreadcrumbList, ItemList] 배열 형태라
+    dict/list 양쪽을 훑어 @type=ItemList를 찾는다.
+    """
     for m in _LD_RE.finditer(html):
         try:
             data = json.loads(m.group(1))
         except ValueError:
             continue
-        if isinstance(data, dict) and data.get("@type") == "ItemList":
-            out = []
-            for el in data.get("itemListElement", []):
-                prod = el.get("item", el)
-                if prod.get("@type") == "Product":
-                    out.append(prod)
-            if out:
-                return out
+        for obj in (data if isinstance(data, list) else [data]):
+            if isinstance(obj, dict) and obj.get("@type") == "ItemList":
+                out = []
+                for el in obj.get("itemListElement", []):
+                    prod = el.get("item", el)
+                    if prod.get("@type") == "Product":
+                        out.append(prod)
+                if out:
+                    return out
     return []
 
 

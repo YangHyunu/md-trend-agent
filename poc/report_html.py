@@ -252,6 +252,49 @@ def _no_data_note(sigs):
     return (f'<p class="note">검색량 미검출: {E(", ".join(missing))}</p>' if missing else "")
 
 
+def _pinterest_block(pinterest: dict) -> str:
+    """Pinterest 수요 섹션 (조건부). 버킷·코퍼스갭·성장트렌드/카테고리 스파크라인.
+
+    NAVER와 스케일 상이라 별도 섹션으로 격리한다. 버킷은 note의 '버킷 X' 파싱.
+    """
+    sigs = pinterest.get("signals", [])
+    by = lambda src: [s for s in sigs if s["source"] == src]
+
+    vol_rows, gaps = [], []
+    for s in by("pinterest_kw_metrics"):
+        if "미검출" in s["note"]:
+            gaps.append(s["group"])
+        else:
+            bucket = s["note"].split("버킷 ")[1].split(".")[0] if "버킷 " in s["note"] else "?"
+            vol_rows.append(f'<li><b>{E(s["group"])}</b> '
+                            f'<span class="muted">월간 {E(bucket)}</span></li>')
+
+    def spark_rows(items, topn=6):
+        rows = []
+        for s in items:
+            ser = s["series"]
+            if not ser:
+                continue
+            rows.append(
+                f'<div class="sigrow"><span class="sig-label"><b>{E(s["group"])}</b></span>'
+                f'{_spark(ser)}'
+                f'<span class="sig-num">최근 {round(ser[-1]["ratio"], 1)}</span></div>')
+        return "\n".join(rows[:topn])
+
+    trend_rows = spark_rows(by("pinterest_trends"))
+    cat_rows = spark_rows(by("pinterest_category"))
+    gap_note = (f'<p class="note">코퍼스 미검출(갭): {E(", ".join(gaps))}</p>' if gaps else "")
+    return f'''<section>
+      <h2 data-n="P">글로벌 수요 · Pinterest {E(config.PINTEREST_REGION)}</h2>
+      <p class="note">Pinterest {E(config.PINTEREST_REGION)} 코퍼스. NAVER와 스케일 상이 — 절대 비교 금지.
+        버킷=월간 검색량, 스파크라인=주간 추이.</p>
+      {f'<div class="grp">키워드 검색량 버킷</div><ul class="acts">{"".join(vol_rows)}</ul>' if vol_rows else ''}
+      {gap_note}
+      {f'<div class="grp">성장 트렌드 · womens_fashion</div>{trend_rows}' if trend_rows else ''}
+      {f'<div class="grp">니트 카테고리 수요</div>{cat_rows}' if cat_rows else ''}
+    </section>'''
+
+
 def _trend_section(backed, evidence, ev_urls, ev_auth, ev_title):
     """§2 권위 근거 트렌드 블록 (phase 순 + hero 이미지)."""
     trend_html = []
@@ -406,8 +449,11 @@ def _appendix_blocks(demoted, ok, evidence, analysis, crawl):
 
 def render_html(analysis, naver: dict, crawl_results: list[dict], evidence: list[dict],
                 datalayer_aggregates: list[dict] | None = None,
-                steady: dict | None = None) -> str:
-    """render_report와 같은 입력 → 완결 HTML 문서 문자열 (섹션 빌더 조립)."""
+                steady: dict | None = None, pinterest: dict | None = None) -> str:
+    """render_report와 같은 입력 → 완결 HTML 문서 문자열 (섹션 빌더 조립).
+
+    pinterest 있으면 NAVER 뒤에 Pinterest 수요 섹션 삽입(조건부). None이면 미출력.
+    """
     dl = datalayer_aggregates or []
     steady = steady or {}
     ev_urls = {e["id"]: e["url"] for e in evidence}
@@ -435,6 +481,8 @@ def render_html(analysis, naver: dict, crawl_results: list[dict], evidence: list
     top_fam = _roll(ok, "colors_family_top")[0][0]
     top_sil = _roll(ok, "silhouettes_top")[0][0]
     top_mat = _roll(ok, "materials_top")[0][0]
+
+    pin_section = _pinterest_block(pinterest) if pinterest and pinterest.get("signals") else ""
 
     gaps_html = "".join(f"<li>{E(g)}</li>" for g in analysis.gaps)
     act_html = "".join(f"<li><b>{E(a.recommendation)}</b><br><span class='muted'>{E(a.rationale)}</span></li>"
@@ -498,7 +546,7 @@ def render_html(analysis, naver: dict, crawl_results: list[dict], evidence: list
       <div class="dom"><span class="dom-label">국내 블로그·커뮤니티 (참고용)</span>
         <ul class="dom">{dom_html}</ul></div>
     </section>
-
+    {pin_section}
     <section>
       <h2 data-n="06">상품 공백 &amp; MD 액션</h2>
       <div class="grp">공백</div><ul class="gaps">{gaps_html}</ul>

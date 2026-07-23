@@ -2,7 +2,7 @@
 import json
 import sys
 
-from poc import collect, config, naver, report
+from poc import collect, config, naver, pinterest, report
 from poc.analyze import run_analyst, run_researcher
 from datalayer.aggregate import brand_aggregate
 from datalayer.extract import extract_all
@@ -25,6 +25,15 @@ def main() -> int:
                         "failures": [{"call": "all", "error": f"{type(e).__name__}: {e}"}]}
     _dump("naver_raw.json", naver_result)
     print(f"  signals={len(naver_result['signals'])} failures={len(naver_result['failures'])}")
+
+    print("[1b] Pinterest 글로벌 수요 (trends/keyword/category)...")
+    try:
+        pinterest_result = pinterest.fetch_all()
+    except Exception as e:  # 토큰 부재/rate limit — 부분 실패로 계속
+        pinterest_result = {"raw": {}, "signals": [],
+                            "failures": [{"call": "all", "error": f"{type(e).__name__}: {e}"}]}
+    _dump("pinterest_raw.json", pinterest_result)
+    print(f"  signals={len(pinterest_result['signals'])} failures={len(pinterest_result['failures'])}")
 
     print("[2/4] 웹 검색 + 크롤링...")
     crawl_results, evidence = collect.collect()
@@ -77,7 +86,8 @@ def main() -> int:
     (config.OUT_DIR / "report.md").write_text(md, encoding="utf-8")
     from poc.report_html import render_html
     html_doc = render_html(analysis, naver_result, crawl_results, evidence,
-                           datalayer_aggregates=dl_aggregates, steady=steady)
+                           datalayer_aggregates=dl_aggregates, steady=steady,
+                           pinterest=pinterest_result)
     (config.OUT_DIR / "report.html").write_text(html_doc, encoding="utf-8")
     print(f"완료: {config.OUT_DIR / 'report.md'} + report.html")
     return 0
