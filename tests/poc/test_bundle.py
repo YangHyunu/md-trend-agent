@@ -98,3 +98,27 @@ def test_bundle_round_trips_json():
     b = assemble([_concept()], _EMPTY, _EMPTY, [], now=NOW)
     restored = MergeBundle.model_validate_json(b.model_dump_json())
     assert restored.iso_week == b.iso_week
+
+
+def test_assemble_supply_success_counts_clean_empty_brand():
+    # 정상 추출됐으나 상품 0개(계절/품절) = source 있고 failure None → succeeded에 포함
+    concepts = [_concept()]
+    from datalayer.records import BrandExtractionResult
+    extraction = [
+        BrandExtractionResult(brand="A", source="shopify", products=[_rec(item="Sweater", materials=["cashmere"])]),
+        BrandExtractionResult(brand="B", source="shopify", products=[], failure=None),  # clean-empty
+        BrandExtractionResult(brand="C", source=None, products=[], failure="죽음"),
+    ]
+    b = assemble(concepts, _naver_result("캐시미어 니트"), _EMPTY, extraction, now=NOW)
+    cov = b.coverage["supply"]
+    assert cov.attempted == 3 and cov.succeeded == 2          # A + clean-empty B
+    assert cov.succeeded + len(cov.failures) == cov.attempted  # 사각지대 없음
+
+
+def test_assemble_concept_match_honest_when_supply_dead():
+    # 공급축 전멸(extraction 없음)이어도 어휘 매칭 가능 concept은 succeeded로 정직 표기 (0.0 금지)
+    concepts = [_concept()]   # "cashmere knit" → materials=["cashmere"] → measurable
+    b = assemble(concepts, _EMPTY, _EMPTY, [], now=NOW, supply_error="VPN 죽음")
+    cm = b.coverage["concept_match"]
+    assert cm.succeeded == 1 and cm.ratio == 1.0             # None/0.0 아님
+    assert b.concepts[0].supply is None                      # 공급축은 여전히 미실행

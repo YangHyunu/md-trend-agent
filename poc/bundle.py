@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from datalayer.aggregate import brand_aggregate
 from datalayer.records import BrandExtractionResult
-from poc.measure import match_supply, series_delta
+from poc.measure import concept_facets, match_supply, series_delta
 
 SCHEMA_VERSION = "3.0"
 
@@ -69,6 +69,12 @@ def _axis(attempted: int, succeeded: int, failures: list[dict]) -> AxisCoverage:
                         ratio=ratio, failures=failures)
 
 
+def _measurable(concept: dict) -> bool:
+    """concept이 정규화 사전 facet을 하나라도 갖는지 — 공급축 실행 여부와 무관(어휘 기반)."""
+    f = concept_facets(concept)
+    return bool(f["item"] or f["materials"] or f["silhouettes"] or f["color_family"])
+
+
 def assemble(concepts: list[dict],
              naver_result: dict,
              pinterest_result: dict,
@@ -93,10 +99,10 @@ def assemble(concepts: list[dict],
         "naver": _axis(naver_batches, len(naver_result["raw"]), naver_result["failures"]),
         "pinterest": _axis(1, len(pinterest_result["raw"]), pinterest_result["failures"]),
         "supply": _axis(len(extraction_results),
-                        sum(1 for r in extraction_results if r.products), supply_failures),
+                        sum(1 for r in extraction_results if r.failure is None), supply_failures),
         "concept_match": _axis(
             len(concepts),
-            sum(1 for m in measured if m.supply and not m.supply.unmeasurable),
+            sum(1 for c in concepts if _measurable(c)),
             []),
     }
     return MergeBundle(
