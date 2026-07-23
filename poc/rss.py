@@ -6,6 +6,9 @@ import time
 from datetime import datetime, timezone
 
 import feedparser
+import httpx
+
+from poc import config
 
 
 def _article_id(url: str) -> str:
@@ -54,3 +57,47 @@ def filter_by_terms(articles: list[dict], terms: list[str]) -> list[dict]:
         if matched:
             kept.append({**a, "matched_terms": matched})
     return kept
+
+
+DEFAULT_TIMEOUT = 20.0
+_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) md-trend-agent/0.1"
+
+
+def fetch_feed(client: httpx.Client, url: str) -> str | None:
+    try:
+        resp = client.get(url)
+        resp.raise_for_status()
+        return resp.text
+    except httpx.HTTPError:
+        return None
+
+
+def fetch_all_feeds(client: httpx.Client | None = None) -> dict:
+    own = client is None
+    if own:
+        client = httpx.Client(
+            timeout=DEFAULT_TIMEOUT,
+            follow_redirects=True,
+            headers={"User-Agent": _UA},
+        )
+    articles: list[dict] = []
+    failures: list[str] = []
+    try:
+        for term, url in config.WWD_TAG_FEEDS.items():
+            xml = fetch_feed(client, url)
+            if xml is None:
+                failures.append(f"wwd:{term}")
+                continue
+            found = parse_feed(xml, source=f"wwd:{term}")
+            articles.extend({**a, "matched_terms": [term]} for a in found)
+        for name, url in config.GLOSSY_FEEDS.items():
+            xml = fetch_feed(client, url)
+            if xml is None:
+                failures.append(f"glossy:{name}")
+                continue
+            found = parse_feed(xml, source=f"glossy:{name}")
+            articles.extend(filter_by_terms(found, config.KNIT_FILTER_TERMS))
+    finally:
+        if own:
+            client.close()
+    return {"articles": articles, "failures": failures}

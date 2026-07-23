@@ -159,3 +159,24 @@ MAX_CRAWL_URLS = 26
 MAX_NAVER_CALLS = 6
 CRAWL_TIMEOUT_SEC = 60
 MAX_PER_DOMAIN = 5
+
+# --- RSS (SPEC_V3 §5.1) ---
+# WWD 태그피드가 유일한 타깃 소스. crochet/sweaters/cardigan은 WWD 태그 어휘가
+# 아니라 빈 200을 반환하므로 넣지 않는다(2026-07-23 실측).
+WWD_TAG_FEEDS = {
+    "cashmere": "https://wwd.com/tag/cashmere/feed/",
+    "knitwear": "https://wwd.com/tag/knitwear/feed/",
+    "wool": "https://wwd.com/tag/wool/feed/",
+}
+# 글로시는 전체 피드만 살아있음(섹션 피드 전부 404) — 키워드 필터 필수.
+GLOSSY_FEEDS = {
+    "vogue": "https://www.vogue.com/feed/rss",
+    "harpersbazaar": "https://www.harpersbazaar.com/rss/all.xml/",
+    "elle": "https://www.elle.com/rss/all.xml/",
+}
+KNIT_FILTER_TERMS = [
+    "knit", "knitwear", "cashmere", "sweater", "cardigan", "wool",
+    "crochet", "pointelle", "mohair", "alpaca", "merino",
+]
+ARTICLES_PATH = OUT_DIR / "articles.jsonl"
+MAX_CONCEPTS = 20  # LLM#1 concept 상한 (V2 §21.2 예산 파생)
