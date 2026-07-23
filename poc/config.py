@@ -12,6 +12,19 @@ OUT_DIR = ROOT / "out"
 
 NAVER_BASE_URL = "https://naverapihub.apigw.ntruss.com"
 
+# --- Pinterest v5 (수요신호 보조 축, NAVER와 별개 스케일). ad account US/USD. ---
+PINTEREST_BASE_URL = "https://api.pinterest.com"
+PINTEREST_REGION = "US"            # KR 리전 없음 — US 프록시. note에 명기.
+PINTEREST_AD_ACCOUNT = "549770618335"
+# keyword metrics: 임의 키워드 월간 검색량 버킷. cashmere/merino류는 코퍼스 갭(EMPTY) —
+# 요청/응답 diff로 미검출 신호를 정직 표기. Pinterest US 영문 코퍼스라 영문 키워드.
+PINTEREST_KW_METRICS_KEYWORDS = [
+    "cashmere sweater", "cashmere cardigan", "knitwear", "cardigan",
+    "cashmere", "merino wool", "quince cashmere",
+]
+# 니트 관련 카테고리 enum (53주 시계열 수요). SPEC_V2 검증 목록.
+PINTEREST_CATEGORIES = ["SWEATERS_AND_CARDIGANS", "SCARVES_AND_SHAWLS"]
+
 
 @dataclass(frozen=True)
 class Brand:
