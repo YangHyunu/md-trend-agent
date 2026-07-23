@@ -71,3 +71,19 @@ def test_quince_returns_none_for_non_quince():
     with httpx.Client(transport=httpx.MockTransport(handler),
                       base_url="https://shop.test") as c:
         assert QuinceSource().fetch("cos", "https://shop.test/", c) is None
+
+
+def test_default_paths_are_subcollection_union():
+    # 2026-07-23 실측: SSR은 페이지네이션 쿼리 무시 → sitemap 하위 컬렉션 유니온이 유일한 커버리지 경로
+    from datalayer.sources.quince import _DEFAULT_PATHS
+    assert _DEFAULT_PATHS[0] == "shop/women/cashmere"          # 루트 유지
+    assert len(_DEFAULT_PATHS) == 12
+    assert len(set(_DEFAULT_PATHS)) == 12                       # 중복 없음
+    assert "shop/women/sweaters-&-jackets/cashmere" in _DEFAULT_PATHS
+
+
+def test_default_paths_survive_dead_subcollections():
+    # 하위 컬렉션이 404로 죽어도(사이트 개편) 루트만 살아있으면 수집은 성공해야 한다
+    with quince_client() as c:   # 핸들러는 루트만 200, 나머지 404
+        recs = QuinceSource().fetch("Quince", "https://www.quince.com/", c)
+    assert recs is not None and len(recs) == 3

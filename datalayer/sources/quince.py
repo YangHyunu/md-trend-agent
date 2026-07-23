@@ -24,7 +24,24 @@ _NEXT_DATA_RE = re.compile(
 
 # US 스토어프론트(en-us) 고정. 다른 locale 지원 시 registry에서 주입.
 _CURRENCY = "USD"
-_DEFAULT_PATHS = ["shop/women/cashmere"]
+# 2026-07-23 실측: SSR은 cursor/page/offset 쿼리와 /_next/data 라우트를 전부 무시
+# (클라이언트 XHR 페이지네이션, 엔드포인트 정적 미노출). sitemap_subcollections.xml의
+# women-cashmere 하위 컬렉션 유니온으로 unique 30→107 확보(전체 290 — 잔여는 XHR API
+# 필요, 미채택). 경로 간 productId dedup은 fetch의 records dict가 수행.
+_DEFAULT_PATHS = [
+    "shop/women/cashmere",
+    "shop/women/cashmere/accessories",
+    "shop/women/cashmere/dresses",
+    "shop/women/cashmere/hats",
+    "shop/women/cashmere/outerwear",
+    "shop/women/cashmere/scarves-gloves",
+    "shop/women/cashmere/sweats",
+    "shop/women/cashmere/throws-blankets",
+    "shop/women/sweaters-&-jackets/cashmere",
+    "shop/women/sweaters-&-jackets/cashmere-collection",
+    "shop/women/sweaters-&-jackets/cashmere/cotton-sweaters",
+    "shop/women/sweaters-&-jackets/cashmere/merino-wool-sweaters",
+]
 
 
 def _next_data(html: str) -> dict | None:
