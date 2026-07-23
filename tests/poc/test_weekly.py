@@ -38,6 +38,23 @@ def test_weekly_writes_bundle_and_archive(monkeypatch, tmp_path):
     assert latest == archive
 
 
+def test_weekly_wires_storage(monkeypatch, tmp_path):
+    # M4: run 후 sqlite 3테이블에 저장 배선 (SPEC_V3 §9)
+    import sqlite3
+    _setup(monkeypatch, tmp_path, naver_raises=False)
+    (tmp_path / "articles.jsonl").write_text(
+        json.dumps({"id": "a1", "source": "wwd:cashmere", "url": "https://x.com/1",
+                    "title": "T", "published_at": None,
+                    "fetched_at": "2026-07-23T00:00:00+00:00",
+                    "matched_terms": ["cashmere"], "excerpt": "e"}, ensure_ascii=False))
+    summary = weekly.run(now=NOW)
+    assert summary["storage"] == {"articles": 1, "concepts": 1}
+    conn = sqlite3.connect(tmp_path / "trend.db")
+    assert conn.execute("SELECT COUNT(*) FROM articles").fetchone()[0] == 1
+    assert conn.execute("SELECT COUNT(*) FROM concept_weekly").fetchone()[0] == 1
+    conn.close()
+
+
 def test_weekly_axis_exception_is_isolated(monkeypatch, tmp_path):
     # M2 수용 기준: 축 1개가 raise해도 번들은 생성되고 실패가 coverage에 남는다
     _setup(monkeypatch, tmp_path, naver_raises=True)
