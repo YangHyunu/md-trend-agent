@@ -100,3 +100,14 @@ def test_poll_fetches_and_appends(tmp_path):
     assert summary["added"] == len(load_articles(path)) > 0
     again = poll(client=_feed_client(), path=path)
     assert again["added"] == 0  # 같은 피드 재수집 = 전부 dedup
+
+
+def test_rss_exit_code():
+    from poc.rss import exit_code
+    assert exit_code({"fetched": 5, "added": 2, "failures": []}) == 0
+    # 부분 실패는 정상(V2 §4.4) — 일부 피드만 죽으면 0
+    assert exit_code({"fetched": 3, "added": 1, "failures": [{"feed": "wwd:wool"}]}) == 0
+    # 전 피드 실패만 경보
+    assert exit_code({"fetched": 0, "added": 0, "failures": [{"feed": "all"}]}) == 1
+    # 조용한 주(피드 정상, 새 글 없음)는 정상
+    assert exit_code({"fetched": 0, "added": 0, "failures": []}) == 0

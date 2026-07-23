@@ -137,5 +137,12 @@ def poll(client: httpx.Client | None = None, path: Path | None = None) -> dict:
     }
 
 
+def exit_code(result: dict) -> int:
+    """cron 경보용(SPEC_V3 §15): 전 피드 실패(fetched 0 + failures)만 1 — 부분 실패는 정상(V2 §4.4)."""
+    return 1 if result["fetched"] == 0 and result["failures"] else 0
+
+
 if __name__ == "__main__":
-    print(json.dumps(poll(), ensure_ascii=False))
+    _result = poll()
+    print(json.dumps(_result, ensure_ascii=False))
+    raise SystemExit(exit_code(_result))

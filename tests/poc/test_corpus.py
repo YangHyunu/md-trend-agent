@@ -147,3 +147,18 @@ def test_main_falls_back_when_all_concepts_dropped(monkeypatch, tmp_path):
     assert json.loads((tmp_path / "concepts.json").read_text()) == prior
     dropped = json.loads((tmp_path / "concepts_dropped.json").read_text())
     assert dropped[0]["reason"] == "no_valid_source_refs"
+
+
+def test_validate_concepts_honors_zero_max():
+    # `max_concepts or DEFAULT`는 0을 default로 삼킨다 — is None으로 교정 확인
+    out = CorpusOutput(concepts=[_concept()])
+    kept, dropped = validate_concepts(out, {"afresh-01"}, max_concepts=0)
+    assert kept == []
+    assert dropped == [{"label_ko": "포인텔 니트", "reason": "over_max_concepts"}]
+
+
+def test_corpus_exit_code():
+    from poc.corpus import exit_code
+    assert exit_code({"concepts": 16, "dropped": 0}) == 0
+    assert exit_code({"concepts": 16, "dropped": 0, "fallback": "APIError: x"}) == 1
+    assert exit_code({"concepts": 0, "dropped": 5, "fallback": "all_concepts_dropped"}) == 1

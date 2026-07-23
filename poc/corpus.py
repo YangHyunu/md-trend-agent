@@ -36,7 +36,8 @@ def validate_concepts(
     valid_refs: set[str],
     max_concepts: int | None = None,
 ) -> tuple[list[Concept], list[dict]]:
-    max_concepts = max_concepts or config.MAX_CONCEPTS
+    if max_concepts is None:
+        max_concepts = config.MAX_CONCEPTS
     kept: list[Concept] = []
     dropped: list[dict] = []
     for c in output.concepts:
@@ -68,6 +69,11 @@ def build_corpus_input(
     prior_concepts: list[dict],
     now: datetime | None = None,
 ) -> tuple[dict, set[str]]:
+    """기사+웹서치+직전 concepts → LLM#1 입력 번들과 유효 ref 집합.
+
+    ref 문법(SPEC_V3 §6.2): 기사 = `a`+sha1(url)[:10] (rss.py가 부여한 id 그대로),
+    웹서치 = `w{i}` (crawl_results 통과 항목의 enumerate 인덱스 — M4에서 안정 id로 교체 예정).
+    """
     recent = _recent(articles, now)
     web = [
         {
@@ -160,5 +166,12 @@ def main(now: datetime | None = None) -> dict:
     return {"concepts": len(concepts), "dropped": len(dropped)}
 
 
+def exit_code(result: dict) -> int:
+    """cron 경보용(SPEC_V3 §15): fallback(LLM 실패·전량폐기)은 1 — 직전 주 유지를 은폐하지 않는다."""
+    return 1 if "fallback" in result else 0
+
+
 if __name__ == "__main__":
-    print(json.dumps(main(), ensure_ascii=False))
+    _result = main()
+    print(json.dumps(_result, ensure_ascii=False))
+    raise SystemExit(exit_code(_result))
