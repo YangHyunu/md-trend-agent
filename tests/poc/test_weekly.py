@@ -26,6 +26,8 @@ def _setup(monkeypatch, tmp_path, *, naver_raises: bool):
     monkeypatch.setattr(weekly.pinterest, "fetch_categories",
                         lambda: {"raw": {}, "signals": [], "failures": []})
     monkeypatch.setattr(weekly, "extract_all", lambda brands: [])
+    monkeypatch.setattr(weekly.synthesize, "synthesize_bundle",
+                        lambda bundle_dict, prior: {"claims": 1, "dropped": 0})
 
 
 def test_weekly_writes_bundle_and_archive(monkeypatch, tmp_path):
@@ -46,3 +48,20 @@ def test_weekly_axis_exception_is_isolated(monkeypatch, tmp_path):
     assert bundle["concepts"][0]["naver"] is None
     assert any("boom" in f["error"]
                for f in bundle["coverage"]["naver"]["failures"])
+
+
+def test_weekly_runs_synthesis_after_bundle(monkeypatch, tmp_path):
+    # M3: 번들 후 LLM#2 합성 단계가 붙고 결과가 run() 요약에 실린다
+    _setup(monkeypatch, tmp_path, naver_raises=False)
+    summary = weekly.run(now=NOW)
+    assert summary["synthesis"] == {"claims": 1, "dropped": 0}
+
+
+def test_weekly_synthesis_failure_isolated(monkeypatch, tmp_path):
+    # LLM#2 실패는 격리(§4.4): 번들은 살아남고 fallback만 기록된다
+    _setup(monkeypatch, tmp_path, naver_raises=False)
+    monkeypatch.setattr(weekly.synthesize, "synthesize_bundle",
+                        lambda bundle_dict, prior: {"claims": 0, "dropped": 0, "fallback": "boom"})
+    summary = weekly.run(now=NOW)
+    assert summary["iso_week"] == "2026-W30"
+    assert summary["synthesis"]["fallback"] == "boom"
