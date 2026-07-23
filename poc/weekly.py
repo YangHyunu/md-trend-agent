@@ -46,17 +46,20 @@ def run(now: datetime | None = None) -> dict:
     weekly_dir.mkdir(exist_ok=True)
     (weekly_dir / f"merge_bundle_{merged.iso_week}.json").write_text(payload, encoding="utf-8")
 
-    # LLM#2 합성 (§8). 실패는 격리(§4.4): 번들은 이미 저장됨. M4 착지 후 prior_weekly 실배선.
-    synthesis_status = synthesize.synthesize_bundle(
-        merged.model_dump(), synthesize._load_prior_weekly())
+    # LLM#2 합성 (§8). storage보다 먼저 실행 — prior_weekly는 직전 주(이번 주 미저장),
+    # class_map(3분류)은 아래 storage로 전달. 실패는 격리(§4.4): 번들은 이미 저장됨.
+    bundle_dict = merged.model_dump()
+    db_path = config.OUT_DIR / "trend.db"
+    prior_weekly = synthesize.load_prior_weekly(bundle_dict, db_path=db_path)
+    synthesis_status, class_map = synthesize.synthesize_bundle(bundle_dict, prior_weekly)
 
-    # 저장 배선 (M4, SPEC_V3 §9) — 번들·articles를 sqlite 3테이블로 이관.
+    # 저장 배선 (M4, SPEC_V3 §9) — 번들·articles·3분류를 sqlite 3테이블로 이관.
     # 실패는 격리(§4): 저장 문제가 report 경로를 죽이지 않도록 summary에만 기록.
     # db·articles 경로는 config.OUT_DIR에서 런타임 파생(테스트 격리 존중).
     try:
         articles = load_articles(config.OUT_DIR / "articles.jsonl")
         storage_result = storage.persist(
-            merged, articles, now=now, db_path=config.OUT_DIR / "trend.db")
+            merged, articles, now=now, db_path=db_path, classifications=class_map)
     except Exception as e:
         storage_result = {"error": f"{type(e).__name__}: {e}"}
 

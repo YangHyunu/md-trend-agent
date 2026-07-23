@@ -27,7 +27,7 @@ def _setup(monkeypatch, tmp_path, *, naver_raises: bool):
                         lambda: {"raw": {}, "signals": [], "failures": []})
     monkeypatch.setattr(weekly, "extract_all", lambda brands: [])
     monkeypatch.setattr(weekly.synthesize, "synthesize_bundle",
-                        lambda bundle_dict, prior: {"claims": 1, "dropped": 0})
+                        lambda bundle_dict, prior: ({"claims": 1, "dropped": 0}, {}))
 
 
 def test_weekly_writes_bundle_and_archive(monkeypatch, tmp_path):
@@ -78,7 +78,21 @@ def test_weekly_synthesis_failure_isolated(monkeypatch, tmp_path):
     # LLM#2 실패는 격리(§4.4): 번들은 살아남고 fallback만 기록된다
     _setup(monkeypatch, tmp_path, naver_raises=False)
     monkeypatch.setattr(weekly.synthesize, "synthesize_bundle",
-                        lambda bundle_dict, prior: {"claims": 0, "dropped": 0, "fallback": "boom"})
+                        lambda bundle_dict, prior: ({"claims": 0, "dropped": 0, "fallback": "boom"}, {}))
     summary = weekly.run(now=NOW)
     assert summary["iso_week"] == "2026-W30"
     assert summary["synthesis"]["fallback"] == "boom"
+
+
+def test_weekly_stores_classification_from_synthesis(monkeypatch, tmp_path):
+    # follow-up 배선: synthesis class_map → concept_weekly.classification (§8)
+    import sqlite3
+    _setup(monkeypatch, tmp_path, naver_raises=False)
+    monkeypatch.setattr(weekly.synthesize, "synthesize_bundle",
+                        lambda bundle_dict, prior: ({"claims": 1, "dropped": 0},
+                                                    {"캐시미어 니트": "leading"}))
+    weekly.run(now=NOW)
+    conn = sqlite3.connect(tmp_path / "trend.db")
+    row = conn.execute("SELECT classification FROM concept_weekly").fetchone()
+    conn.close()
+    assert row[0] == "leading"

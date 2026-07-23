@@ -78,13 +78,13 @@ STYLE_RULE = (
 )
 
 
-def _call(system: str, user: str, output_format):
+def _call(system: str, user: str, output_format, model: str = MODEL):
     client = anthropic.Anthropic()
     last_err = None
     for _ in range(2):  # 1회 + 스키마 실패 시 재시도 1회 (POC_SPEC §7)
         try:
             resp = client.messages.parse(
-                model=MODEL,
+                model=model,
                 max_tokens=16000,
                 thinking={"type": "adaptive"},
                 system=system,

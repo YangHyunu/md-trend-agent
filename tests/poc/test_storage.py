@@ -141,6 +141,20 @@ def test_persist_two_weeks_produces_delta(tmp_path):
     assert d.conn.execute("SELECT COUNT(*) c FROM articles").fetchone()["c"] == 2
 
 
+def test_persist_stores_classification_by_label_ko(tmp_path):
+    # follow-up 배선: classifications{label_ko: 3분류} → concept_weekly.classification (§8)
+    db = tmp_path / "trend.db"
+    arts = [_article("https://x.com/1")]
+    storage.persist(_bundle("2026-W30", _series([0, 0, 0, 0, 40, 40, 40, 40])),
+                    arts, now=NOW, db_path=db,
+                    classifications={"캐시미어 니트": "validated"})
+    d = SqliteDriver(db)
+    row = d.conn.execute(
+        "SELECT classification FROM concept_weekly WHERE concept_id=?",
+        (concept_id("캐시미어 니트"),)).fetchone()
+    assert row["classification"] == "validated"
+
+
 def test_persist_rerun_keeps_delta_vs_prior_week(tmp_path):
     # 재실행 시 이미 저장된 이번 주 행을 직전 주로 오인하면 델타가 series-slope로 뒤집힌다
     db = tmp_path / "trend.db"

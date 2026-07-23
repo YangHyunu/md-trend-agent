@@ -2,6 +2,7 @@
 import json
 from pathlib import Path
 
+from poc import config, synthesize
 from poc.synthesize import (ConceptClaim, SynthAction, SynthesisOutput, build_synth_input,
                             classify, concept_id, demand_supply_gap, validate_synthesis,
                             valid_refs_for)
@@ -211,3 +212,50 @@ def test_run_synthesis_validates_llm_output(monkeypatch):
     out, dropped = synthesize.run_synthesis(bundle, prior)
     assert len(out.claims) == 2
     assert any(d["reason"] == "classification_mismatch" for d in dropped)
+
+
+# --- follow-up 배선: load_prior_weekly (M4 storage) + synthesize_bundle class_map ---
+
+def test_load_prior_weekly_reads_stored_weeks(tmp_path):
+    from poc import storage
+    db = tmp_path / "trend.db"
+    with storage.SqliteDriver(db) as d:
+        d.upsert_concept({"label_ko": "캐시미어 니트", "label_en": "cashmere knit",
+                          "aliases": [], "category": "소재", "source_refs": ["a1"]}, "2026-W29")
+        d.append_weekly({"concept_id": storage.concept_id("캐시미어 니트"), "iso_week": "2026-W29",
+                         "naver_series": [{"period": "2026-06-01", "ratio": 10}], "direction": "up",
+                         "delta_pct": None, "supply_count": 1, "editorial_count": 1,
+                         "classification": "validated", "run_id": "r"})
+    bundle = json.loads(FIX.read_text())
+    prior = synthesize.load_prior_weekly(bundle, db_path=db)
+    assert "캐시미어 니트" in prior                 # 저장된 개념은 prior 보유
+    assert "포인텔 니트" not in prior               # 미저장은 부재(첫 주)
+
+
+def test_load_prior_weekly_empty_db_returns_empty(tmp_path):
+    bundle = json.loads(FIX.read_text())
+    assert synthesize.load_prior_weekly(bundle, db_path=tmp_path / "fresh.db") == {}
+
+
+def test_synthesize_bundle_returns_class_map(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "OUT_DIR", tmp_path)
+    bundle = json.loads(FIX.read_text())
+    fake = SynthesisOutput(claims=[
+        ConceptClaim(concept_id="캐시미어 니트", classification="validated", statement="s",
+                     direction="up", delta_pct=42.0, supply_count=12, demand_supply_gap=False,
+                     evidence_refs=["a0000000001"], rationale="r"),
+    ], actions=[], limitations=[])
+    monkeypatch.setattr(synthesize, "_call", lambda *a, **k: fake)
+    status, class_map = synthesize.synthesize_bundle(bundle, {})
+    assert status["claims"] == 1
+    assert class_map == {"캐시미어 니트": "validated"}
+
+
+def test_synthesize_bundle_failure_returns_empty_class_map(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "OUT_DIR", tmp_path)
+    bundle = json.loads(FIX.read_text())
+    def boom(*a, **k):
+        raise RuntimeError("LLM 죽음")
+    monkeypatch.setattr(synthesize, "_call", boom)
+    status, class_map = synthesize.synthesize_bundle(bundle, {})
+    assert "fallback" in status and class_map == {}

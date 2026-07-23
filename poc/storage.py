@@ -198,8 +198,14 @@ class SqliteDriver:
 
 
 def store_bundle(bundle: MergeBundle, articles: list[dict],
-                 driver: SqliteDriver, *, run_id: str) -> dict:
-    """번들 → 3테이블 저장. weekly.run이 번들 산출 후 호출(§43 독립 함수)."""
+                 driver: SqliteDriver, *, run_id: str,
+                 classifications: dict | None = None) -> dict:
+    """번들 → 3테이블 저장. weekly.run이 번들 산출 후 호출(§43 독립 함수).
+
+    classifications: {label_ko: 'validated'|'leading'|'fading'} — M3 synthesis claim 3분류.
+    없거나 미분류 concept은 None으로 저장.
+    """
+    classifications = classifications or {}
     for a in articles:
         driver.put_article(a)
 
@@ -221,17 +227,19 @@ def store_bundle(bundle: MergeBundle, articles: list[dict],
             "delta_pct": delta["delta_pct"],
             "supply_count": supply["supply_count"] if supply else None,
             "editorial_count": measurement["editorial_count"],
-            "classification": None,   # M3 claim 3분류 배선 대기 (§46)
+            "classification": classifications.get(concept["label_ko"]),   # M3 claim 3분류 (§8)
             "run_id": run_id,
         })
     return {"articles": len(articles), "concepts": len(bundle.concepts)}
 
 
 def persist(bundle: MergeBundle, articles: list[dict], *,
-            now: datetime, db_path: Path | None = None) -> dict:
+            now: datetime, db_path: Path | None = None,
+            classifications: dict | None = None) -> dict:
     """weekly.run 배선 진입점. run_id = iso_week + now 타임스탬프(결정론)."""
     db_path = db_path or config.DB_PATH
     db_path.parent.mkdir(parents=True, exist_ok=True)
     run_id = f"{bundle.iso_week}-{now.strftime('%Y%m%dT%H%M%SZ')}"
     with SqliteDriver(db_path) as driver:
-        return store_bundle(bundle, articles, driver, run_id=run_id)
+        return store_bundle(bundle, articles, driver, run_id=run_id,
+                            classifications=classifications)
