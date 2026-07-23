@@ -1,9 +1,11 @@
 """RSS 수집 — SPEC_V3 §5.1: WWD 태그피드 + 글로시 all.xml 키워드 필터."""
 
 import hashlib
+import json
 import re
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 
 import feedparser
 import httpx
@@ -101,3 +103,39 @@ def fetch_all_feeds(client: httpx.Client | None = None) -> dict:
         if own:
             client.close()
     return {"articles": articles, "failures": failures}
+
+
+def load_articles(path: Path | None = None) -> list[dict]:
+    path = path or config.ARTICLES_PATH
+    if not path.exists():
+        return []
+    return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+
+
+def append_articles(new: list[dict], path: Path | None = None) -> int:
+    path = path or config.ARTICLES_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+    seen = {a["url"] for a in load_articles(path)}
+    added = 0
+    with path.open("a", encoding="utf-8") as fh:
+        for a in new:
+            if a["url"] in seen:
+                continue
+            fh.write(json.dumps(a, ensure_ascii=False) + "\n")
+            seen.add(a["url"])
+            added += 1
+    return added
+
+
+def poll(client: httpx.Client | None = None, path: Path | None = None) -> dict:
+    result = fetch_all_feeds(client)
+    added = append_articles(result["articles"], path)
+    return {
+        "fetched": len(result["articles"]),
+        "added": added,
+        "failures": result["failures"],
+    }
+
+
+if __name__ == "__main__":
+    print(json.dumps(poll(), ensure_ascii=False))

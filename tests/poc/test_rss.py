@@ -3,7 +3,7 @@ from pathlib import Path
 import httpx
 
 from poc import config
-from poc.rss import parse_feed, filter_by_terms, fetch_all_feeds
+from poc.rss import parse_feed, filter_by_terms, fetch_all_feeds, append_articles, load_articles, poll
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -71,3 +71,32 @@ def test_fetch_all_feeds_tags_wwd_and_filters_glossy():
     # knitwear/wool 태그피드는 404 → failures에 기록, 파이프라인은 진행
     assert "wwd:knitwear" in result["failures"]
     assert "wwd:wool" in result["failures"]
+
+
+def _article(url: str) -> dict:
+    return {
+        "id": "a" + url[-10:],
+        "source": "wwd:cashmere",
+        "url": url,
+        "title": "t",
+        "published_at": None,
+        "fetched_at": "2026-07-23T00:00:00+00:00",
+        "matched_terms": ["cashmere"],
+        "excerpt": "e",
+    }
+
+
+def test_append_articles_dedups_by_url(tmp_path):
+    path = tmp_path / "articles.jsonl"
+    first = append_articles([_article("https://x/1"), _article("https://x/2")], path=path)
+    second = append_articles([_article("https://x/2"), _article("https://x/3")], path=path)
+    assert (first, second) == (2, 1)
+    assert [a["url"] for a in load_articles(path)] == ["https://x/1", "https://x/2", "https://x/3"]
+
+
+def test_poll_fetches_and_appends(tmp_path):
+    path = tmp_path / "articles.jsonl"
+    summary = poll(client=_feed_client(), path=path)
+    assert summary["added"] == len(load_articles(path)) > 0
+    again = poll(client=_feed_client(), path=path)
+    assert again["added"] == 0  # 같은 피드 재수집 = 전부 dedup
